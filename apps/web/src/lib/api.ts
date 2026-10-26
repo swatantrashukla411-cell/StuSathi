@@ -1,0 +1,210 @@
+/**
+ * CampusPilot AI Frontend API Client
+ * Typed fetch wrappers communicating with the FastAPI backend.
+ */
+
+const API_BASE = typeof window !== "undefined" ? "/api/v1" : "http://127.0.0.1:8000/api/v1";
+
+export interface TodaySession {
+  session_id: number;
+  subject_id: number;
+  subject_code: string;
+  subject_name: string;
+  start_time: string;
+  end_time: string;
+  session_type: string;
+  room: string;
+  building: string;
+  instructor?: string;
+  status: "completed" | "ongoing" | "upcoming";
+}
+
+export interface TodayScheduleResponse {
+  date: string;
+  day_name: string;
+  day_of_week: number;
+  total_classes: number;
+  sessions: TodaySession[];
+}
+
+export interface NextClassResponse {
+  has_upcoming: boolean;
+  subject_name?: string;
+  subject_code?: string;
+  start_time?: string;
+  room?: string;
+  building?: string;
+  instructor?: string;
+  minutes_remaining?: number;
+  message: string;
+}
+
+export interface SubjectAttendance {
+  subject_code: string;
+  subject_name: string;
+  classes_conducted: number;
+  classes_attended: number;
+  classes_missed: number;
+  current_percentage: number;
+  required_threshold: number;
+  remaining_planned_sessions: number;
+  safe_future_absences: number;
+  risk_category: "safe" | "caution" | "critical" | "unrecoverable";
+  explanation: string;
+}
+
+export interface SimulateResponse {
+  current_percentage: number;
+  projected_percentage: number;
+  threshold_percentage: number;
+  sessions_missed_in_sim: number;
+  safe_absences_remaining_after: number;
+  risk_category_after: string;
+  is_safe: boolean;
+  explanation: string;
+}
+
+export interface RecoveryResponse {
+  current_percentage: number;
+  target_threshold: number;
+  classes_needed_consecutively: number;
+  remaining_sessions_available: number;
+  is_recoverable: boolean;
+  max_possible_percentage: number;
+  explanation: string;
+}
+
+export interface GPASummaryResponse {
+  current_semester_sgpa?: {
+    total_credits: number;
+    sgpa: number;
+  };
+  cumulative_cgpa?: {
+    total_completed_credits: number;
+    cgpa: number;
+  };
+  semesters_evaluated: number;
+}
+
+export interface TargetGPAResponse {
+  current_cgpa: number;
+  target_cgpa: number;
+  completed_credits: number;
+  remaining_credits: number;
+  required_future_sgpa: number;
+  is_achievable: boolean;
+  max_possible_cgpa: number;
+  explanation: string;
+}
+
+export interface QUMSCaptcha {
+  session_token: string;
+  captcha_image: string;
+  form_token: string;
+}
+
+export async function fetchTodaySchedule(userId: number = 1): Promise<TodayScheduleResponse> {
+  const res = await fetch(`${API_BASE}/timetable/today?user_id=${userId}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to load today's schedule");
+  return res.json();
+}
+
+export async function fetchNextClass(userId: number = 1): Promise<NextClassResponse> {
+  const res = await fetch(`${API_BASE}/timetable/next?user_id=${userId}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to load next class");
+  return res.json();
+}
+
+export async function fetchAttendanceSummary(userId: number = 1): Promise<SubjectAttendance[]> {
+  const res = await fetch(`${API_BASE}/attendance/summary?user_id=${userId}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to load attendance summary");
+  return res.json();
+}
+
+export async function simulateAbsence(payload: {
+  classes_conducted: number;
+  classes_attended: number;
+  remaining_planned_sessions: number;
+  sessions_to_miss: number;
+  required_threshold?: number;
+}): Promise<SimulateResponse> {
+  const res = await fetch(`${API_BASE}/attendance/simulate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Simulation failed");
+  return res.json();
+}
+
+export async function calculateRecovery(payload: {
+  classes_conducted: number;
+  classes_attended: number;
+  remaining_planned_sessions: number;
+  target_threshold?: number;
+}): Promise<RecoveryResponse> {
+  const res = await fetch(`${API_BASE}/attendance/recover`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Recovery calculation failed");
+  return res.json();
+}
+
+export async function fetchGPASummary(userId: number = 1): Promise<GPASummaryResponse> {
+  const res = await fetch(`${API_BASE}/gpa/summary?user_id=${userId}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to load GPA summary");
+  return res.json();
+}
+
+export async function solveTargetCGPA(payload: {
+  current_cgpa: number;
+  completed_credits: number;
+  remaining_credits: number;
+  target_cgpa: number;
+  max_scale?: number;
+}): Promise<TargetGPAResponse> {
+  const res = await fetch(`${API_BASE}/gpa/target`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Target GPA calculation failed");
+  return res.json();
+}
+
+export async function fetchQUMSCaptcha(): Promise<QUMSCaptcha> {
+  const res = await fetch(`${API_BASE}/integrations/qums/captcha`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch QUMS captcha");
+  return res.json();
+}
+
+export async function syncQUMS(payload: {
+  session_token: string;
+  qid: string;
+  password: string;
+  captcha: string;
+  user_id?: number;
+}) {
+  const res = await fetch(`${API_BASE}/integrations/qums/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "QUMS sync failed");
+  }
+  return res.json();
+}
+
+export async function sendChatMessage(message: string, userId: number = 1) {
+  const res = await fetch(`${API_BASE}/agent/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, user_id: userId }),
+  });
+  if (!res.ok) throw new Error("Failed to send message to agent");
+  return res.json();
+}
