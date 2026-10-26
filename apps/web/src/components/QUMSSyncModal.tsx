@@ -29,7 +29,7 @@ export default function QUMSSyncModal({ isOpen, onClose, onSyncSuccess }: QUMSSy
       const data = await fetchQUMSCaptcha();
       setCaptchaData(data);
     } catch (err: any) {
-      setErrorMsg("Unable to connect to Quantum University QUMS server. Please check your internet.");
+      setErrorMsg(err.message || "Unable to connect to Quantum University QUMS server. Please check your internet.");
     } finally {
       setLoadingCaptcha(false);
     }
