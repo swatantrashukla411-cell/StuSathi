@@ -48,6 +48,9 @@ build/
 *.pem
 *.key
 
+# Logs
+*.log
+
 # IDEs & System
 .vscode/
 .idea/
