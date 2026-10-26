@@ -29,6 +29,11 @@ ENV/
 .coverage
 htmlcov/
 
+# Local SQLite Databases
+*.db
+*.sqlite3
+*.db-journal
+
 # Node / Next.js
 node_modules/
 .next/
