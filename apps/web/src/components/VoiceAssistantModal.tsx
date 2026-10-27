@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Mic, MicOff, Send, X, Sparkles, Volume2, Bot, User, Radio, AlertCircle } from "lucide-react";
+import { Mic, MicOff, Send, X, Sparkles, Volume2, Bot, User, Radio, AlertCircle, VolumeX } from "lucide-react";
 import { sendChatMessage } from "@/lib/api";
 
 interface Message {
@@ -19,35 +19,43 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
   const [messages, setMessages] = useState<Message[]>([
     {
       sender: "agent",
-      text: "Hey Swatantra! Main aapka CampusPilot AI assistant hoon. Aap mujhse puchh sakte hain: 'Meri next class kab hai?', 'DBMS me kitne bunk safe hain?', ya '75% recovery ke liye kya karna hoga?'",
+      text: "Hey Swatantra! Main aapka CampusPilot AI assistant hoon. Aap mujhse bolkar puchh sakte hain: 'Meri next class kab hai?', 'DBMS me kitne bunk safe hain?', ya '75% attendance ke liye kya karna hoga?'",
     },
   ]);
   const [inputText, setInputText] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [recognitionSupported, setRecognitionSupported] = useState(true);
+  const [liveInterim, setLiveInterim] = useState("");
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
   const recognitionRef = useRef<any>(null);
+  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const accumulatedSpeechRef = useRef<string>("");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll chat to bottom
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isProcessing]);
+  }, [messages, isProcessing, liveInterim]);
 
-  // Pre-load SpeechSynthesis voices
+  // Clean up audio on unmount
   useEffect(() => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.getVoices();
-      window.speechSynthesis.onvoiceschanged = () => {
-        window.speechSynthesis.getVoices();
-      };
-    }
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+      }
+    };
   }, []);
 
-  // Initialize Web Speech API for voice recognition
+  // Initialize Web Speech API for voice recognition with auto-stop silence detection
   useEffect(() => {
     if (typeof window !== "undefined") {
       const SpeechRecognition =
@@ -55,97 +63,179 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
 
       if (SpeechRecognition) {
         const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
+        recognition.continuous = true; // Stay alive to catch whole sentence
+        recognition.interimResults = true; // Stream words in real time
         recognition.lang = "en-IN"; // Supports Indian English & Hinglish accents
 
         recognition.onstart = () => {
           setIsListening(true);
           setVoiceError(null);
+          setLiveInterim("");
+          accumulatedSpeechRef.current = "";
         };
+
         recognition.onend = () => {
           setIsListening(false);
         };
+
         recognition.onerror = (event: any) => {
           setIsListening(false);
           if (event.error === "not-allowed" || event.error === "permission-denied") {
-            setVoiceError("Microphone permission blocked. Please click the lock icon in the address bar to allow microphone access.");
+            setVoiceError("Microphone permission blocked. Please click the lock icon in the browser address bar to allow microphone access.");
           } else if (event.error === "no-speech") {
             setVoiceError("No speech detected. Please tap the mic and try speaking again.");
           }
         };
 
         recognition.onresult = (event: any) => {
-          const transcript = event.results?.[0]?.[0]?.transcript;
-          if (transcript) {
-            handleSendMessage(transcript);
+          // Clear any pending silence timer because user is actively speaking!
+          if (silenceTimeoutRef.current) {
+            clearTimeout(silenceTimeoutRef.current);
+          }
+
+          let finalTranscript = "";
+          let interimTranscript = "";
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
+            } else {
+              interimTranscript += event.results[i][0].transcript;
+            }
+          }
+
+          const currentWords = (finalTranscript || interimTranscript).trim();
+          if (currentWords) {
+            accumulatedSpeechRef.current = currentWords;
+            setLiveInterim(currentWords);
+
+            // 🎯 AUTO-STOP ON SILENCE:
+            // When user stops speaking for 1.3 seconds, automatically stop & send!
+            silenceTimeoutRef.current = setTimeout(() => {
+              if (recognitionRef.current) {
+                try {
+                  recognitionRef.current.stop();
+                } catch (e) {}
+              }
+              setIsListening(false);
+              const textToSend = accumulatedSpeechRef.current.trim();
+              setLiveInterim("");
+              accumulatedSpeechRef.current = "";
+              if (textToSend) {
+                handleSendMessage(textToSend);
+              }
+            }, 1300);
           }
         };
 
         recognitionRef.current = recognition;
-      } else {
-        setRecognitionSupported(false);
       }
     }
   }, []);
 
   if (!isOpen) return null;
 
-  const toggleListening = () => {
-    if (!recognitionRef.current) {
-      setVoiceError("Voice recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge.");
-      return;
-    }
-    setVoiceError(null);
-    if (isListening) {
-      recognitionRef.current.stop();
-    } else {
-      try {
-        // Stop any ongoing speech playback before listening
-        if (typeof window !== "undefined" && "speechSynthesis" in window) {
-          window.speechSynthesis.cancel();
-          setIsSpeaking(false);
-        }
-        recognitionRef.current.start();
-      } catch (e: any) {
-        console.error("SpeechRecognition start error:", e);
-      }
-    }
-  };
-
-  const speakText = (text: string) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  // Primary: Edge Neural High-Fidelity Voice Stream (zero OS dependency)
+  // Fallback: Browser Web Speech API
+  const playSpeech = (text: string) => {
     try {
-      window.speechSynthesis.cancel();
+      // Stop any existing audio
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
 
-      // Clean markdown symbols for smooth, natural audio
       const cleanText = text
         .replace(/[*_#`~[\]()]/g, "")
         .replace(/https?:\/\/\S+/g, "")
         .trim();
 
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      const voices = window.speechSynthesis.getVoices();
+      // Use backend neural stream
+      const audioUrl = `/api/v1/agent/tts?text=${encodeURIComponent(cleanText)}&voice=hi-IN-SwaraNeural`;
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
 
-      // Select preferred voice: Indian English or general English
-      const preferred =
-        voices.find((v) => v.lang.includes("en-IN") || v.lang.includes("hi-IN")) ||
-        voices.find((v) => v.lang.startsWith("en")) ||
-        voices[0];
+      setIsSpeaking(true);
 
-      if (preferred) utterance.voice = preferred;
+      audio.onended = () => {
+        setIsSpeaking(false);
+      };
+
+      audio.onerror = () => {
+        // Fallback to browser SpeechSynthesis
+        fallbackBrowserTTS(cleanText);
+      };
+
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          fallbackBrowserTTS(cleanText);
+        });
+      }
+    } catch (e) {
+      fallbackBrowserTTS(text);
+    }
+  };
+
+  const fallbackBrowserTTS = (text: string) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setIsSpeaking(false);
+      return;
+    }
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
       utterance.onerror = () => setIsSpeaking(false);
-
       window.speechSynthesis.resume();
       window.speechSynthesis.speak(utterance);
     } catch (e) {
-      console.warn("TTS error:", e);
       setIsSpeaking(false);
+    }
+  };
+
+  const stopSpeaking = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
+  };
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      setVoiceError("Voice recognition not supported. Please use Google Chrome or Microsoft Edge.");
+      return;
+    }
+    setVoiceError(null);
+    stopSpeaking();
+
+    if (isListening) {
+      if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
+      recognitionRef.current.stop();
+      setIsListening(false);
+      const textToSend = accumulatedSpeechRef.current.trim();
+      setLiveInterim("");
+      accumulatedSpeechRef.current = "";
+      if (textToSend) {
+        handleSendMessage(textToSend);
+      }
+    } else {
+      try {
+        accumulatedSpeechRef.current = "";
+        setLiveInterim("");
+        recognitionRef.current.start();
+      } catch (e: any) {
+        console.error("Speech start error:", e);
+      }
     }
   };
 
@@ -155,6 +245,9 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
 
     setInputText("");
     setVoiceError(null);
+    setLiveInterim("");
+    stopSpeaking();
+
     setMessages((prev) => [...prev, { sender: "user", text }]);
     setIsProcessing(true);
 
@@ -164,8 +257,8 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
         ...prev,
         { sender: "agent", text: res.reply, toolInvoked: res.tool_invoked },
       ]);
-      // Speak the response aloud naturally
-      speakText(res.reply);
+      // Speak the response using natural neural voice!
+      playSpeech(res.reply);
     } catch (e) {
       setMessages((prev) => [
         ...prev,
@@ -179,7 +272,6 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
     }
   };
 
-  // Quick suggestion chips
   const quickPrompts = [
     "Next class kab hai?",
     "DBMS me kitne bunk safe hain?",
@@ -189,35 +281,56 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
-      <div className="w-full max-w-xl h-[580px] rounded-2xl bg-surface border border-indigo-500/30 shadow-2xl flex flex-col justify-between overflow-hidden relative">
+      <div className="w-full max-w-xl h-[600px] rounded-2xl bg-surface border border-indigo-500/30 shadow-2xl flex flex-col justify-between overflow-hidden relative">
         {/* Header */}
         <div className="p-4 border-b border-borderSubtle bg-surfaceHover/50 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className={`h-8 w-8 rounded-lg bg-agentIndigo flex items-center justify-center shadow-lg transition-transform ${isSpeaking ? "animate-bounce shadow-cyan-500/50" : "shadow-indigo-500/20"}`}>
+            <div className={`h-8 w-8 rounded-lg bg-agentIndigo flex items-center justify-center shadow-lg transition-all ${isSpeaking ? "scale-110 shadow-cyan-500/50 ring-2 ring-cyan-400" : "shadow-indigo-500/20"}`}>
               <Bot className="h-4 w-4 text-white" />
             </div>
             <div>
               <h3 className="font-bold text-sm text-white flex items-center gap-2">
                 <span>CampusPilot AI Voice Agent</span>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${isSpeaking ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 animate-pulse" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"}`}>
-                  {isSpeaking ? "Speaking 🔊" : isListening ? "Listening 🎙️" : "Live"}
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${isSpeaking ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 animate-pulse" : isListening ? "bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"}`}>
+                  {isSpeaking ? "Speaking (Neural Audio) 🔊" : isListening ? "Listening (Auto-stops on pause) 🎙️" : "Live"}
                 </span>
               </h3>
-              <p className="text-[11px] text-gray-400">Speaks in Hindi, Hinglish, & English</p>
+              <p className="text-[11px] text-gray-400">Natural Hindi/Hinglish Neural Voice & Auto-Silence Detection</p>
             </div>
           </div>
 
-          <button
-            onClick={() => {
-              if (typeof window !== "undefined" && "speechSynthesis" in window) {
-                window.speechSynthesis.cancel();
-              }
-              onClose();
-            }}
-            className="text-gray-400 hover:text-white p-1 rounded-lg bg-surface border border-borderSubtle"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Quick Speaker Audio Test Button */}
+            <button
+              onClick={() => playSpeech("Namaste Swatantra! CampusPilot audio system bilkul perfect chal raha hai. Aap batao main aapki kya madad kar sakta hoon?")}
+              className="text-[11px] font-semibold text-voiceCyan hover:text-white px-2.5 py-1 rounded-lg bg-cyan-950/40 border border-cyan-500/30 flex items-center gap-1.5 transition-all hover:bg-cyan-900/50"
+              title="Test speaker sound"
+            >
+              <Volume2 className="h-3 w-3" />
+              <span>Test Audio 🔊</span>
+            </button>
+
+            {isSpeaking && (
+              <button
+                onClick={stopSpeaking}
+                className="text-[11px] text-rose-400 hover:text-white px-2 py-1 rounded-lg bg-rose-950/40 border border-rose-500/30 flex items-center gap-1"
+                title="Stop audio playback"
+              >
+                <VolumeX className="h-3 w-3" />
+                <span>Stop</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                stopSpeaking();
+                onClose();
+              }}
+              className="text-gray-400 hover:text-white p-1 rounded-lg bg-surface border border-borderSubtle"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Warning / Error banner if any */}
@@ -255,7 +368,7 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
               {/* Speaker action */}
               {m.sender === "agent" && (
                 <button
-                  onClick={() => speakText(m.text)}
+                  onClick={() => playSpeech(m.text)}
                   className="mt-1 text-[10px] text-gray-400 hover:text-voiceCyan flex items-center gap-1 ml-1 transition-colors"
                 >
                   <Volume2 className="h-3 w-3" />
@@ -265,10 +378,18 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
             </div>
           ))}
 
+          {/* Real-time live transcript banner while speaking */}
+          {isListening && liveInterim && (
+            <div className="p-2.5 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-xs text-cyan-200 flex items-center gap-2 animate-pulse">
+              <Radio className="h-3.5 w-3.5 text-cyan-400 animate-spin flex-shrink-0" />
+              <span>Hearing: &quot;{liveInterim}&quot;</span>
+            </div>
+          )}
+
           {isProcessing && (
             <div className="flex items-center gap-2 text-xs text-indigo-300 animate-pulse pl-2">
               <Sparkles className="h-3.5 w-3.5 animate-spin" />
-              <span>CampusPilot is calculating exact academic formulas...</span>
+              <span>CampusPilot is reasoning & generating exact academic math...</span>
             </div>
           )}
 
@@ -293,7 +414,7 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
         {/* Voice Trigger & Input Footer */}
         <div className="p-4 border-t border-borderSubtle bg-surfaceHover/30 space-y-3">
           {/* Quick Voice Bar */}
-          <div className="flex items-center justify-center">
+          <div className="flex flex-col items-center justify-center gap-1">
             <button
               onClick={toggleListening}
               className={`relative px-5 py-2.5 rounded-full flex items-center gap-2.5 text-xs font-bold transition-all shadow-xl ${
@@ -305,15 +426,18 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
               {isListening ? (
                 <>
                   <Radio className="h-4 w-4 animate-spin text-white" />
-                  <span>Listening... Tap to Stop</span>
+                  <span>Listening... (Will auto-send when you pause)</span>
                 </>
               ) : (
                 <>
                   <Mic className="h-4 w-4 text-gray-950" />
-                  <span>Tap to Speak (Hinglish / English)</span>
+                  <span>Tap to Speak (Auto-stops when you pause)</span>
                 </>
               )}
             </button>
+            <span className="text-[10px] text-gray-500">
+              {isListening ? "Pause speaking for 1.3s to automatically submit" : "Bolne ke baad rukein, yeh khud-b-khud submit ho jayega"}
+            </span>
           </div>
 
           {/* Text Input Fallback */}
