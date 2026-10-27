@@ -72,7 +72,10 @@ export default function QUMSSyncModal({ isOpen, onClose, onSyncSuccess }: QUMSSy
       }, 1500);
     } catch (err: any) {
       setErrorMsg(err.message || "Sync failed. Please verify your QID, password, and captcha.");
-      loadCaptcha(); // refresh captcha on failed attempt
+      // Only refresh captcha if it expired or didn't match
+      if (err.message && (err.message.toLowerCase().includes("captcha") || err.message.toLowerCase().includes("expired"))) {
+        loadCaptcha();
+      }
     } finally {
       setSubmitting(false);
     }

@@ -159,14 +159,45 @@ class QUMSService:
             # Step 2: Extract Attendance Table from Dashboard / Student Portal
             parsed_subjects = cls._parse_attendance_from_html(response_text)
 
-            # If not found directly on landing dashboard, check common attendance sub-routes
+            # If not found directly on landing page (e.g. redirected to Feedback form)
             if not parsed_subjects:
-                for sub_route in ["/Student/Attendance", "/Attendance/StudentAttendance", "/Student/Home"]:
+                soup = BeautifulSoup(response_text, "html.parser")
+
+                # Discover candidate routes from navigation links on the page
+                candidate_routes = []
+                for a in soup.find_all("a", href=True):
+                    href = a["href"].strip()
+                    text = a.get_text(strip=True).lower()
+                    if any(kw in href.lower() or kw in text for kw in ["attend", "dash", "home", "portal", "student", "academic"]):
+                        if href not in candidate_routes and not href.startswith("javascript") and not href.startswith("#"):
+                            candidate_routes.append(href)
+
+                # Standard Cyborg / QUMS ERP student navigation routes
+                standard_routes = [
+                    "/Home/Dashboard",
+                    "/Home/Index",
+                    "/Student/Dashboard",
+                    "/StudentPortal/Dashboard",
+                    "/Academic/StudentAttendance",
+                    "/Attendance/StudentAttendance",
+                    "/Attendance/AttendanceDetail",
+                    "/StudentAttendance/Index",
+                    "/Student/StudentAttendance",
+                    "/Student/Index",
+                    "/Dashboard",
+                ]
+                for r in standard_routes:
+                    if r not in candidate_routes:
+                        candidate_routes.append(r)
+
+                for sub_route in candidate_routes:
                     try:
                         r_sub = await client.get(sub_route)
-                        parsed_subjects = cls._parse_attendance_from_html(r_sub.text)
-                        if parsed_subjects:
-                            break
+                        if r_sub.status_code == 200:
+                            parsed = cls._parse_attendance_from_html(r_sub.text)
+                            if parsed:
+                                parsed_subjects = parsed
+                                break
                     except Exception:
                         continue
 
@@ -205,30 +236,39 @@ class QUMSService:
             if not rows:
                 continue
 
-            # Identify column indexes from header row
-            header_row = rows[0]
-            header_cols = [th.get_text(strip=True).lower() for th in header_row.find_all(["th", "td"])]
-
+            # Search first 5 rows to locate header row
+            header_row_idx = -1
             subj_idx = -1
             conducted_idx = -1
             attended_idx = -1
 
-            for idx, h in enumerate(header_cols):
-                if any(k in h for k in ["subject", "course", "paper"]):
-                    subj_idx = idx
-                elif any(k in h for k in ["conducted", "total", "held", "delivered"]):
-                    conducted_idx = idx
-                elif any(k in h for k in ["attended", "present"]):
-                    attended_idx = idx
+            for r_idx, r in enumerate(rows[:5]):
+                header_cols = [th.get_text(strip=True).lower() for th in r.find_all(["th", "td"])]
+                s_i, c_i, a_i = -1, -1, -1
+                for idx, h in enumerate(header_cols):
+                    if any(k in h for k in ["subject", "course", "paper", "sub"]):
+                        s_i = idx
+                    elif any(k in h for k in ["conducted", "total", "held", "delivered", "lectures"]):
+                        c_i = idx
+                    elif any(k in h for k in ["attended", "present"]):
+                        a_i = idx
+
+                if s_i != -1 and (c_i != -1 or a_i != -1):
+                    header_row_idx = r_idx
+                    subj_idx, conducted_idx, attended_idx = s_i, c_i, a_i
+                    break
 
             # If headers were successfully identified
-            if subj_idx != -1 and conducted_idx != -1 and attended_idx != -1:
-                for row in rows[1:]:
+            if subj_idx != -1 and header_row_idx != -1:
+                for row in rows[header_row_idx + 1:]:
                     cols = [td.get_text(strip=True) for td in row.find_all("td")]
-                    if len(cols) > max(subj_idx, conducted_idx, attended_idx):
+                    if len(cols) > subj_idx:
                         raw_title = cols[subj_idx]
-                        raw_conducted = cols[conducted_idx].replace("%", "").strip()
-                        raw_attended = cols[attended_idx].replace("%", "").strip()
+                        if not raw_title or any(ignore in raw_title.lower() for ignore in ["total", "summary", "average"]):
+                            continue
+
+                        raw_conducted = cols[conducted_idx].replace("%", "").strip() if conducted_idx != -1 and len(cols) > conducted_idx else "0"
+                        raw_attended = cols[attended_idx].replace("%", "").strip() if attended_idx != -1 and len(cols) > attended_idx else "0"
 
                         try:
                             conducted = float(raw_conducted)

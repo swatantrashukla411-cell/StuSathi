@@ -30,8 +30,7 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
   const recognitionRef = useRef<any>(null);
-  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const accumulatedSpeechRef = useRef<string>("");
+  const capturedTextRef = useRef<string>("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
@@ -49,13 +48,10 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
-      if (silenceTimeoutRef.current) {
-        clearTimeout(silenceTimeoutRef.current);
-      }
     };
   }, []);
 
-  // Initialize Web Speech API for voice recognition with auto-stop silence detection
+  // Initialize Web Speech API for voice recognition
   useEffect(() => {
     if (typeof window !== "undefined") {
       const SpeechRecognition =
@@ -63,7 +59,7 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
 
       if (SpeechRecognition) {
         const recognition = new SpeechRecognition();
-        recognition.continuous = true; // Stay alive to catch whole sentence
+        recognition.continuous = false; // Native auto-stop when speech ends
         recognition.interimResults = true; // Stream words in real time
         recognition.lang = "en-IN"; // Supports Indian English & Hinglish accents
 
@@ -71,60 +67,39 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
           setIsListening(true);
           setVoiceError(null);
           setLiveInterim("");
-          accumulatedSpeechRef.current = "";
+          capturedTextRef.current = "";
         };
 
-        recognition.onend = () => {
-          setIsListening(false);
+        recognition.onresult = (event: any) => {
+          let currentTranscript = "";
+          for (let i = 0; i < event.results.length; i++) {
+            currentTranscript += event.results[i][0].transcript;
+          }
+          if (currentTranscript.trim()) {
+            capturedTextRef.current = currentTranscript.trim();
+            setLiveInterim(currentTranscript.trim());
+          }
         };
 
         recognition.onerror = (event: any) => {
           setIsListening(false);
           if (event.error === "not-allowed" || event.error === "permission-denied") {
-            setVoiceError("Microphone permission blocked. Please click the lock icon in the browser address bar to allow microphone access.");
+            setVoiceError("Microphone permission blocked. Please click the lock icon in the address bar to allow microphone access.");
           } else if (event.error === "no-speech") {
-            setVoiceError("No speech detected. Please tap the mic and try speaking again.");
+            // User just paused or didn't speak, do not show scary error
+            setVoiceError(null);
+          } else if (event.error !== "aborted") {
+            setVoiceError(`Voice notice: ${event.error}. You can also type below.`);
           }
         };
 
-        recognition.onresult = (event: any) => {
-          // Clear any pending silence timer because user is actively speaking!
-          if (silenceTimeoutRef.current) {
-            clearTimeout(silenceTimeoutRef.current);
-          }
-
-          let finalTranscript = "";
-          let interimTranscript = "";
-
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              finalTranscript += event.results[i][0].transcript;
-            } else {
-              interimTranscript += event.results[i][0].transcript;
-            }
-          }
-
-          const currentWords = (finalTranscript || interimTranscript).trim();
-          if (currentWords) {
-            accumulatedSpeechRef.current = currentWords;
-            setLiveInterim(currentWords);
-
-            // 🎯 AUTO-STOP ON SILENCE:
-            // When user stops speaking for 1.3 seconds, automatically stop & send!
-            silenceTimeoutRef.current = setTimeout(() => {
-              if (recognitionRef.current) {
-                try {
-                  recognitionRef.current.stop();
-                } catch (e) {}
-              }
-              setIsListening(false);
-              const textToSend = accumulatedSpeechRef.current.trim();
-              setLiveInterim("");
-              accumulatedSpeechRef.current = "";
-              if (textToSend) {
-                handleSendMessage(textToSend);
-              }
-            }, 1300);
+        recognition.onend = () => {
+          setIsListening(false);
+          const finalQuery = capturedTextRef.current.trim();
+          setLiveInterim("");
+          capturedTextRef.current = "";
+          if (finalQuery) {
+            handleSendMessage(finalQuery);
           }
         };
 
@@ -136,10 +111,8 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
   if (!isOpen) return null;
 
   // Primary: Edge Neural High-Fidelity Voice Stream (zero OS dependency)
-  // Fallback: Browser Web Speech API
   const playSpeech = (text: string) => {
     try {
-      // Stop any existing audio
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
@@ -153,7 +126,6 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
         .replace(/https?:\/\/\S+/g, "")
         .trim();
 
-      // Use backend neural stream
       const audioUrl = `/api/v1/agent/tts?text=${encodeURIComponent(cleanText)}&voice=hi-IN-SwaraNeural`;
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
@@ -165,7 +137,6 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
       };
 
       audio.onerror = () => {
-        // Fallback to browser SpeechSynthesis
         fallbackBrowserTTS(cleanText);
       };
 
@@ -212,25 +183,20 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
-      setVoiceError("Voice recognition not supported. Please use Google Chrome or Microsoft Edge.");
+      setVoiceError("Voice recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge.");
       return;
     }
     setVoiceError(null);
     stopSpeaking();
 
     if (isListening) {
-      if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
       setIsListening(false);
-      const textToSend = accumulatedSpeechRef.current.trim();
-      setLiveInterim("");
-      accumulatedSpeechRef.current = "";
-      if (textToSend) {
-        handleSendMessage(textToSend);
-      }
     } else {
       try {
-        accumulatedSpeechRef.current = "";
+        capturedTextRef.current = "";
         setLiveInterim("");
         recognitionRef.current.start();
       } catch (e: any) {
@@ -257,9 +223,8 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
         ...prev,
         { sender: "agent", text: res.reply, toolInvoked: res.tool_invoked },
       ]);
-      // Speak the response using natural neural voice!
       playSpeech(res.reply);
-    } catch (e) {
+    } catch (e: any) {
       setMessages((prev) => [
         ...prev,
         {
@@ -292,17 +257,17 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
               <h3 className="font-bold text-sm text-white flex items-center gap-2">
                 <span>CampusPilot AI Voice Agent</span>
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${isSpeaking ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 animate-pulse" : isListening ? "bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"}`}>
-                  {isSpeaking ? "Speaking (Neural Audio) 🔊" : isListening ? "Listening (Auto-stops on pause) 🎙️" : "Live"}
+                  {isSpeaking ? "Speaking 🔊" : isListening ? "Listening 🎙️" : "Live"}
                 </span>
               </h3>
-              <p className="text-[11px] text-gray-400">Natural Hindi/Hinglish Neural Voice & Auto-Silence Detection</p>
+              <p className="text-[11px] text-gray-400">Natural Hindi/Hinglish Neural Voice & Auto-Stop Speech</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             {/* Quick Speaker Audio Test Button */}
             <button
-              onClick={() => playSpeech("Namaste Swatantra! CampusPilot audio system bilkul perfect chal raha hai. Aap batao main aapki kya madad kar sakta hoon?")}
+              onClick={() => playSpeech("Namaste Swatantra! CampusPilot audio system bilkul perfect chal raha hai. Aap boliye main sun raha hoon.")}
               className="text-[11px] font-semibold text-voiceCyan hover:text-white px-2.5 py-1 rounded-lg bg-cyan-950/40 border border-cyan-500/30 flex items-center gap-1.5 transition-all hover:bg-cyan-900/50"
               title="Test speaker sound"
             >
@@ -379,17 +344,23 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
           ))}
 
           {/* Real-time live transcript banner while speaking */}
-          {isListening && liveInterim && (
-            <div className="p-2.5 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-xs text-cyan-200 flex items-center gap-2 animate-pulse">
-              <Radio className="h-3.5 w-3.5 text-cyan-400 animate-spin flex-shrink-0" />
-              <span>Hearing: &quot;{liveInterim}&quot;</span>
+          {isListening && (
+            <div className="p-3 rounded-xl bg-cyan-950/40 border border-cyan-500/40 text-xs text-cyan-200 flex items-center gap-2.5 animate-pulse">
+              <Radio className="h-4 w-4 text-cyan-400 animate-spin flex-shrink-0" />
+              <span>
+                {liveInterim ? (
+                  <>Hearing: <strong className="text-white">&quot;{liveInterim}&quot;</strong></>
+                ) : (
+                  "Listening... Boliye, bolne ke baad rukein toh yeh automatically submit hoga."
+                )}
+              </span>
             </div>
           )}
 
           {isProcessing && (
             <div className="flex items-center gap-2 text-xs text-indigo-300 animate-pulse pl-2">
               <Sparkles className="h-3.5 w-3.5 animate-spin" />
-              <span>CampusPilot is reasoning & generating exact academic math...</span>
+              <span>CampusPilot is calculating exact academic formulas...</span>
             </div>
           )}
 
@@ -417,7 +388,7 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
           <div className="flex flex-col items-center justify-center gap-1">
             <button
               onClick={toggleListening}
-              className={`relative px-5 py-2.5 rounded-full flex items-center gap-2.5 text-xs font-bold transition-all shadow-xl ${
+              className={`relative px-6 py-2.5 rounded-full flex items-center gap-2.5 text-xs font-bold transition-all shadow-xl ${
                 isListening
                   ? "bg-rose-600 text-white shadow-rose-500/40 animate-pulse ring-4 ring-rose-500/20"
                   : "bg-gradient-to-r from-agentIndigo to-voiceCyan text-gray-950 hover:brightness-110 shadow-indigo-500/30"
@@ -426,18 +397,15 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
               {isListening ? (
                 <>
                   <Radio className="h-4 w-4 animate-spin text-white" />
-                  <span>Listening... (Will auto-send when you pause)</span>
+                  <span>Listening... (Speak and pause)</span>
                 </>
               ) : (
                 <>
                   <Mic className="h-4 w-4 text-gray-950" />
-                  <span>Tap to Speak (Auto-stops when you pause)</span>
+                  <span>Tap to Speak (Auto-sends on pause)</span>
                 </>
               )}
             </button>
-            <span className="text-[10px] text-gray-500">
-              {isListening ? "Pause speaking for 1.3s to automatically submit" : "Bolne ke baad rukein, yeh khud-b-khud submit ho jayega"}
-            </span>
           </div>
 
           {/* Text Input Fallback */}
