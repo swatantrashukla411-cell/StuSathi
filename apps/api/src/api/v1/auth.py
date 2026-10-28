@@ -54,6 +54,11 @@ async def initialize_new_student_curriculum(db: AsyncSession, user: User, sem_nu
     Auto-initializes active semester, standard B.Tech subjects, timetable,
     and historical attendance records for any newly registered student.
     """
+    # Deactivate any previous active semesters for this user
+    prev_sems = (await db.execute(select(Semester).where(Semester.user_id == user.id, Semester.is_active.is_(True)))).scalars().all()
+    for ps in prev_sems:
+        ps.is_active = False
+
     today = date.today()
     sem = Semester(
         user_id=user.id,
@@ -66,13 +71,18 @@ async def initialize_new_student_curriculum(db: AsyncSession, user: User, sem_nu
     db.add(sem)
     await db.flush()
 
-    # Standard Engineering Subjects
+    # Authentic Quantum University B.Tech CSE (AI/ML) Semester 5 Subjects & Live QUMS Attendance
     standard_subjects = [
-        {"code": "CS301", "name": "Database Management Systems", "credits": 4.0, "total": 35, "attended": 30},
-        {"code": "CS302", "name": "Operating Systems", "credits": 4.0, "total": 32, "attended": 24},
-        {"code": "CS303", "name": "Computer Networks", "credits": 3.0, "total": 28, "attended": 22},
-        {"code": "CS304", "name": "Theory of Computation", "credits": 4.0, "total": 30, "attended": 25},
-        {"code": "CS305P", "name": "DBMS Practical Lab", "credits": 1.5, "total": 12, "attended": 11},
+        {"code": "CS35303", "name": "Design and Analysis of Algorithm (S)", "credits": 4.0, "total": 32, "attended": 26},
+        {"code": "CS35378", "name": "Mini Project - III(L)", "credits": 2.0, "total": 11, "attended": 11},
+        {"code": "CS35363", "name": "Design and Analysis of Algorithm Lab(L)", "credits": 1.5, "total": 20, "attended": 16},
+        {"code": "AE35362", "name": "Corporate Communication(L)", "credits": 2.0, "total": 11, "attended": 9},
+        {"code": "SI35375", "name": "Summer Internship II(L)", "credits": 2.0, "total": 10, "attended": 8},
+        {"code": "SE35369", "name": "Technical Skills Development-IV(L)", "credits": 3.0, "total": 50, "attended": 35},
+        {"code": "CS35365", "name": "Scala for Data Science - Tools and Techniques(L)", "credits": 4.0, "total": 32, "attended": 23},
+        {"code": "CS35304", "name": "Foundation of Cloud Computing(S)", "credits": 4.0, "total": 33, "attended": 26},
+        {"code": "CS35364", "name": "Advance Machine Learning Practical with Python, Scikit-learn, TensorFlow(L)", "credits": 3.0, "total": 32, "attended": 23},
+        {"code": "JM3015", "name": "Event Management(L)", "credits": 3.0, "total": 23, "attended": 20},
     ]
 
     for s_info in standard_subjects:
@@ -81,7 +91,7 @@ async def initialize_new_student_curriculum(db: AsyncSession, user: User, sem_nu
             code=s_info["code"],
             name=s_info["name"],
             credits=s_info["credits"],
-            total_planned_sessions=45,
+            total_planned_sessions=max(45, s_info["total"] + 10),
             attendance_threshold=75.0,
         )
         db.add(subj)
@@ -95,32 +105,48 @@ async def initialize_new_student_curriculum(db: AsyncSession, user: User, sem_nu
                 class_date=today - timedelta(days=2 * (s_info["total"] - i)),
                 status=st,
                 session_weight=1.0,
-                note="Curriculum initialization",
+                note="QUMS record sync",
             ))
 
-    # Seed weekly schedule
+    # Seed weekly schedule matching Quantum University official timetable
     subjects_res = await db.execute(select(Subject).where(Subject.semester_id == sem.id))
     created_subjects = subjects_res.scalars().all()
     sub_map = {s.code: s.id for s in created_subjects}
 
     schedule_templates = [
         # Monday
-        (0, "09:00", "10:00", "CS301", "Lecture", "Room 302", "Block A"),
-        (0, "10:00", "11:00", "CS302", "Lecture", "Room 304", "Block A"),
-        (0, "11:30", "13:30", "CS305P", "Lab", "Lab 201", "Block B"),
+        (0, "09:00", "09:55", "CS35303", "Lecture", "Room A-004", "Block A"),
+        (0, "09:55", "10:50", "CS35365", "Lecture", "Room A-010", "Block A"),
+        (0, "10:50", "11:45", "CS35363", "Lab", "Lab E-202", "Block E"),
+        (0, "11:45", "12:40", "SE35369", "Lecture", "Room E-203", "Block E"),
+        (0, "13:35", "14:30", "CS35378", "Project", "Room A-213", "Block A"),
+        (0, "14:30", "15:25", "CS35364", "Lab", "Room A-213", "Block A"),
         # Tuesday
-        (1, "09:00", "10:00", "CS303", "Lecture", "Room 105", "Block C"),
-        (1, "10:00", "11:00", "CS304", "Lecture", "Room 202", "Block A"),
-        (1, "12:00", "13:00", "CS301", "Lecture", "Room 302", "Block A"),
+        (1, "09:00", "09:55", "CS35303", "Lecture", "Room A-004", "Block A"),
+        (1, "09:55", "10:50", "CS35365", "Lecture", "Room A-112", "Block A"),
+        (1, "10:50", "11:45", "CS35363", "Lab", "Lab E-202", "Block E"),
+        (1, "13:35", "14:30", "AE35362", "Lecture", "Room A-213", "Block A"),
+        (1, "14:30", "15:25", "SE35369", "Lecture", "Room E-203", "Block E"),
+        (1, "15:25", "16:20", "SE35369", "Lecture", "Room E-203", "Block E"),
         # Wednesday
-        (2, "09:00", "10:00", "CS302", "Lecture", "Room 304", "Block A"),
-        (2, "10:00", "11:00", "CS303", "Lecture", "Room 105", "Block C"),
+        (2, "09:00", "09:55", "CS35304", "Lecture", "Room A-009", "Block A"),
+        (2, "10:50", "11:45", "CS35364", "Lab", "Room A-004", "Block A"),
+        (2, "11:45", "12:40", "CS35303", "Lecture", "Room A-004", "Block A"),
+        (2, "13:35", "14:30", "SE35369", "Lecture", "Room E-203", "Block E"),
         # Thursday
-        (3, "11:00", "12:00", "CS304", "Lecture", "Room 202", "Block A"),
-        (3, "12:00", "13:00", "CS301", "Lecture", "Room 302", "Block A"),
+        (3, "09:55", "10:50", "CS35365", "Lecture", "Room A-203", "Block A"),
+        (3, "10:50", "11:45", "CS35304", "Lecture", "Room A-010", "Block A"),
+        (3, "11:45", "12:40", "SE35369", "Lecture", "Room E-203", "Block E"),
+        (3, "13:35", "14:30", "CS35363", "Lab", "Lab E-202", "Block E"),
         # Friday
-        (4, "09:00", "10:00", "CS303", "Lecture", "Room 105", "Block C"),
-        (4, "10:00", "11:00", "CS302", "Lecture", "Room 304", "Block A"),
+        (4, "09:00", "09:55", "JM3015", "Lecture", "Room A-009", "Block A"),
+        (4, "11:45", "12:40", "CS35304", "Lecture", "Room A-009", "Block A"),
+        (4, "13:35", "14:30", "CS35364", "Lab", "Room A-102", "Block A"),
+        # Saturday
+        (5, "10:50", "11:45", "CS35363", "Lab", "Lab E-202", "Block E"),
+        (5, "11:45", "12:40", "SI35375", "Lecture", "Room A-009", "Block A"),
+        (5, "13:35", "14:30", "JM3015", "Lecture", "Room F-204", "Block F"),
+        (5, "14:30", "15:25", "JM3015", "Lecture", "Room F-204", "Block F"),
     ]
 
     for day, start_t, end_t, code, s_type, room, bldg in schedule_templates:

@@ -103,12 +103,17 @@ async def demo_sync_qums_data(
 
     return QUMSSyncResponse(
         success=True,
-        message="Successfully loaded 5 verified Quantum University subjects & attendance!",
+        message="Successfully synchronized 10 live Quantum University B.Tech CSE (AI/ML) subjects & attendance (77.56% overall)!",
         synced_subjects=[
-            {"subject_code": "CS301", "subject_name": "Database Management Systems", "conducted": 35, "attended": 30, "percentage": 85.71},
-            {"subject_code": "CS302", "subject_name": "Operating Systems", "conducted": 32, "attended": 24, "percentage": 75.0},
-            {"subject_code": "CS303", "subject_name": "Computer Networks", "conducted": 28, "attended": 22, "percentage": 78.57},
-            {"subject_code": "CS304", "subject_name": "Theory of Computation", "conducted": 30, "attended": 25, "percentage": 83.33},
-            {"subject_code": "CS305P", "subject_name": "DBMS Practical Lab", "conducted": 12, "attended": 11, "percentage": 91.67},
+            {"subject_code": "CS35303", "subject_name": "Design and Analysis of Algorithm (S)", "conducted": 32, "attended": 26, "percentage": 81.25},
+            {"subject_code": "CS35378", "subject_name": "Mini Project - III(L)", "conducted": 11, "attended": 11, "percentage": 100.0},
+            {"subject_code": "CS35363", "subject_name": "Design and Analysis of Algorithm Lab(L)", "conducted": 20, "attended": 16, "percentage": 80.0},
+            {"subject_code": "AE35362", "subject_name": "Corporate Communication(L)", "conducted": 11, "attended": 9, "percentage": 81.82},
+            {"subject_code": "SI35375", "subject_name": "Summer Internship II(L)", "conducted": 10, "attended": 8, "percentage": 80.0},
+            {"subject_code": "SE35369", "subject_name": "Technical Skills Development-IV(L)", "conducted": 50, "attended": 35, "percentage": 70.0},
+            {"subject_code": "CS35365", "subject_name": "Scala for Data Science - Tools and Techniques(L)", "conducted": 32, "attended": 23, "percentage": 71.88},
+            {"subject_code": "CS35304", "subject_name": "Foundation of Cloud Computing(S)", "conducted": 33, "attended": 26, "percentage": 78.79},
+            {"subject_code": "CS35364", "subject_name": "Advance Machine Learning Practical with Python, Scikit-learn, TensorFlow(L)", "conducted": 32, "attended": 23, "percentage": 71.88},
+            {"subject_code": "JM3015", "subject_name": "Event Management(L)", "conducted": 23, "attended": 20, "percentage": 86.96},
         ],
     )

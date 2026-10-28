@@ -159,11 +159,29 @@ class QUMSService:
             # Step 2: Extract Attendance Table from Dashboard / Student Portal
             parsed_subjects = cls._parse_attendance_from_html(response_text)
 
-            # If not found directly on landing page (e.g. redirected to Feedback form)
+            # Verified Quantum University (Cyborg-ERP) routes discovered live
+            qums_direct_routes = [
+                "/Web_StudentAcademic/Cyborg_StudentAttendanceAcademic?id=Attendance",
+                "/Web_StudentAcademic/Cyborg_S_Dashboard",
+                "/Account/Cyborg_StudentMenu",
+                "/Web_StudentAcademic/Cyborg_StudentTimeTable?id=Time%20Table",
+            ]
+
+            if not parsed_subjects:
+                for sub_route in qums_direct_routes:
+                    try:
+                        r_sub = await client.get(sub_route)
+                        if r_sub.status_code == 200:
+                            parsed = cls._parse_attendance_from_html(r_sub.text)
+                            if parsed:
+                                parsed_subjects = parsed
+                                break
+                    except Exception:
+                        continue
+
+            # Fallback: Dynamic route crawling if still not located
             if not parsed_subjects:
                 soup = BeautifulSoup(response_text, "html.parser")
-
-                # Discover candidate routes from navigation links on the page
                 candidate_routes = []
                 for a in soup.find_all("a", href=True):
                     href = a["href"].strip()
@@ -171,24 +189,6 @@ class QUMSService:
                     if any(kw in href.lower() or kw in text for kw in ["attend", "dash", "home", "portal", "student", "academic"]):
                         if href not in candidate_routes and not href.startswith("javascript") and not href.startswith("#"):
                             candidate_routes.append(href)
-
-                # Standard Cyborg / QUMS ERP student navigation routes
-                standard_routes = [
-                    "/Home/Dashboard",
-                    "/Home/Index",
-                    "/Student/Dashboard",
-                    "/StudentPortal/Dashboard",
-                    "/Academic/StudentAttendance",
-                    "/Attendance/StudentAttendance",
-                    "/Attendance/AttendanceDetail",
-                    "/StudentAttendance/Index",
-                    "/Student/StudentAttendance",
-                    "/Student/Index",
-                    "/Dashboard",
-                ]
-                for r in standard_routes:
-                    if r not in candidate_routes:
-                        candidate_routes.append(r)
 
                 for sub_route in candidate_routes:
                     try:
@@ -226,6 +226,7 @@ class QUMSService:
         """
         Parses tables in HTML looking for subject names, conducted classes,
         attended classes, and attendance percentages based on header mapping.
+        Supports both single-column combined codes and separate 'Subject Code' columns.
         """
         soup = BeautifulSoup(html, "html.parser")
         tables = soup.find_all("table")
@@ -239,23 +240,33 @@ class QUMSService:
             # Search first 5 rows to locate header row
             header_row_idx = -1
             subj_idx = -1
+            code_idx = -1
             conducted_idx = -1
             attended_idx = -1
 
             for r_idx, r in enumerate(rows[:5]):
                 header_cols = [th.get_text(strip=True).lower() for th in r.find_all(["th", "td"])]
-                s_i, c_i, a_i = -1, -1, -1
+                s_i, cod_i, c_i, a_i = -1, -1, -1, -1
                 for idx, h in enumerate(header_cols):
-                    if any(k in h for k in ["subject", "course", "paper", "sub"]):
+                    if "subject code & name" in h or "subject & code" in h or "course code & name" in h:
                         s_i = idx
-                    elif any(k in h for k in ["conducted", "total", "held", "delivered", "lectures"]):
+                    elif any(k in h for k in ["subject code", "course code", "paper code"]):
+                        cod_i = idx
+                    elif any(k in h for k in ["subject", "course", "paper", "sub"]):
+                        s_i = idx
+                    elif any(k in h for k in ["conducted", "total lecture", "total lectures", "total", "held", "delivered", "lectures"]):
                         c_i = idx
-                    elif any(k in h for k in ["attended", "present"]):
+                    elif any(k in h for k in ["attended", "total present", "present"]):
                         a_i = idx
+
+                # If only code column found without separate subject column, use it for title
+                if s_i == -1 and cod_i != -1:
+                    s_i = cod_i
+                    cod_i = -1
 
                 if s_i != -1 and (c_i != -1 or a_i != -1):
                     header_row_idx = r_idx
-                    subj_idx, conducted_idx, attended_idx = s_i, c_i, a_i
+                    subj_idx, code_idx, conducted_idx, attended_idx = s_i, cod_i, c_i, a_i
                     break
 
             # If headers were successfully identified
@@ -264,7 +275,7 @@ class QUMSService:
                     cols = [td.get_text(strip=True) for td in row.find_all("td")]
                     if len(cols) > subj_idx:
                         raw_title = cols[subj_idx]
-                        if not raw_title or any(ignore in raw_title.lower() for ignore in ["total", "summary", "average"]):
+                        if not raw_title or any(ignore in raw_title.lower() for ignore in ["total", "summary", "average", "page"]):
                             continue
 
                         raw_conducted = cols[conducted_idx].replace("%", "").strip() if conducted_idx != -1 and len(cols) > conducted_idx else "0"
@@ -277,11 +288,15 @@ class QUMSService:
                             continue
 
                         # Extract code and name
-                        code_match = re.search(r"([A-Z]{2,4}\d{3,4})", raw_title)
-                        code = code_match.group(1) if code_match else f"SUB_{len(parsed_subjects)+1}"
-                        name = raw_title.replace(code, "").strip(" -:")
-                        if not name:
+                        if code_idx != -1 and len(cols) > code_idx and cols[code_idx].strip():
+                            code = cols[code_idx].strip()
                             name = raw_title
+                        else:
+                            code_match = re.search(r"([A-Z]{2,4}\d{3,5}[A-Z]?)", raw_title)
+                            code = code_match.group(1) if code_match else f"SUB_{len(parsed_subjects)+1}"
+                            name = raw_title.replace(code, "").strip(" -:()")
+                            if not name:
+                                name = raw_title
 
                         pct = round((attended / conducted * 100), 2) if conducted > 0 else 100.0
 
@@ -310,10 +325,15 @@ class QUMSService:
         """
         # Get active semester or create one
         sem_res = await db.execute(
-            select(Semester).where(Semester.user_id == user_id, Semester.is_active.is_(True))
+            select(Semester).where(Semester.user_id == user_id, Semester.is_active.is_(True)).order_by(Semester.id.desc())
         )
-        active_sem = sem_res.scalar_one_or_none()
-        if not active_sem:
+        all_active = sem_res.scalars().all()
+        if all_active:
+            active_sem = all_active[0]
+            # Deactivate any duplicate active semesters
+            for extra in all_active[1:]:
+                extra.is_active = False
+        else:
             active_sem = Semester(
                 user_id=user_id,
                 semester_number=5,
