@@ -168,7 +168,18 @@ export default function DashboardPage() {
       <QUMSSyncModal
         isOpen={isQUMSOpen}
         onClose={() => setIsQUMSOpen(false)}
-        onSyncSuccess={() => student?.user_id && loadAllData(student.user_id)}
+        onSyncSuccess={async (syncData?: any) => {
+          if (syncData?.user_id) {
+            try {
+              const updatedProfile = await fetchCurrentStudent(syncData.user_id);
+              handleStudentChange(updatedProfile);
+            } catch (e) {
+              if (student?.user_id) loadAllData(student.user_id);
+            }
+          } else if (student?.user_id) {
+            loadAllData(student.user_id);
+          }
+        }}
         userId={student?.user_id || 1}
       />
 

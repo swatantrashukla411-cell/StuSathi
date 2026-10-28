@@ -207,6 +207,25 @@ class QUMSService:
                     "Please check if your semester attendance is currently published on QUMS."
                 )
 
+            # Step 2.5: Extract student's real name from QUMS portal
+            try:
+                name_match = re.search(r"Welcome\s+([A-Z\s]{3,40})", response_text, re.IGNORECASE)
+                if not name_match:
+                    name_soup = BeautifulSoup(response_text, "html.parser")
+                    for h in name_soup.find_all(["h4", "h2"]):
+                        text_val = h.get_text(strip=True)
+                        if re.match(r"^[A-Z\s]{4,30}$", text_val) and not any(ign in text_val.lower() for ign in ["quantum", "cyborg", "system", "dashboard", "academic", "notice", "time table", "attendance"]):
+                            name_match = text_val
+                            break
+                real_name = name_match.group(1).strip() if hasattr(name_match, "group") else (name_match if isinstance(name_match, str) else None)
+                if real_name:
+                    u_rec = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+                    if u_rec and (u_rec.full_name.startswith("Student") or not u_rec.full_name):
+                        u_rec.full_name = real_name.title()
+                        await db.flush()
+            except Exception:
+                pass
+
             # Step 3: Synchronize parsed subjects into CampusPilot Database
             synced_count = await cls._save_to_database(db=db, user_id=user_id, subjects_data=parsed_subjects)
 

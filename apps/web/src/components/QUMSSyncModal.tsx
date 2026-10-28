@@ -7,7 +7,7 @@ import { fetchQUMSCaptcha, syncQUMS, demoSyncQUMS, QUMSCaptcha } from "@/lib/api
 interface QUMSSyncModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSyncSuccess: () => void;
+  onSyncSuccess: (syncData?: any) => void;
   userId?: number;
 }
 
@@ -86,7 +86,7 @@ export default function QUMSSyncModal({ isOpen, onClose, onSyncSuccess, userId =
       });
       setSuccessMsg(res.message || "Attendance & schedule successfully synced from QUMS!");
       setTimeout(() => {
-        onSyncSuccess();
+        onSyncSuccess(res);
         onClose();
       }, 1500);
     } catch (err: any) {

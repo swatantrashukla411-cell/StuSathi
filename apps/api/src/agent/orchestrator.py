@@ -126,18 +126,39 @@ class AgentOrchestrator:
                 reply = "Aaj aapki koi aur classes nahi hain! Enjoy your break."
             return reply, "get_next_class", res
 
+        # Helper to dynamically identify subject from student message or active curriculum
+        async def _find_query_subject(msg: str) -> str:
+            known_tokens = [
+                "daa", "algorithm", "algo", "scala", "cloud", "machine learning", "ml",
+                "technical skills", "skills", "event", "internship", "dbms", "database",
+                "os", "operating systems", "cn", "networks", "toc", "theory", "maths"
+            ]
+            for token in known_tokens:
+                if token in msg:
+                    return token
+
+            # Search active semester subjects
+            from apps.api.src.models.academic import Subject, Semester
+            from sqlalchemy import select
+            sub_res = await db.execute(
+                select(Subject)
+                .join(Semester, Subject.semester_id == Semester.id)
+                .where(Semester.user_id == user_id, Semester.is_active.is_(True))
+            )
+            subs = sub_res.scalars().all()
+            for s in subs:
+                if s.code.lower() in msg or any(w in msg for w in s.name.lower().split() if len(w) > 3):
+                    return s.code
+
+            return subs[0].code if subs else "CS35303"
+
         # Intent 2: Absence Simulation (Miss / Bunk / Chutti)
         if any(k in msg_lower for k in ["miss", "bunk", "chutti", "na jaun", "skip"]):
             # Extract number of classes
             num_match = re.search(r"(\d+)\s*(class|lecture|din)", msg_lower)
             sessions_to_miss = int(num_match.group(1)) if num_match else 1
 
-            # Extract subject
-            subject_query = "DBMS"
-            for s_name in ["dbms", "database", "os", "operating systems", "cn", "networks", "toc", "theory", "maths"]:
-                if s_name in msg_lower:
-                    subject_query = s_name
-                    break
+            subject_query = await _find_query_subject(msg_lower)
 
             res = await execute_simulate_absence(
                 db, user_id, subject_name_or_code=subject_query, sessions_to_miss=sessions_to_miss
@@ -166,11 +187,7 @@ class AgentOrchestrator:
 
         # Intent 3: Attendance Recovery (Recover / 75%)
         if any(k in msg_lower for k in ["recover", "75%", "danger zone", "kitni attend karni", "maintain"]):
-            subject_query = "TOC"
-            for s_name in ["toc", "theory", "dbms", "os", "cn", "networks"]:
-                if s_name in msg_lower:
-                    subject_query = s_name
-                    break
+            subject_query = await _find_query_subject(msg_lower)
 
             res = await execute_calculate_recovery(db, user_id, subject_name_or_code=subject_query)
             if "error" in res:
@@ -193,11 +210,7 @@ class AgentOrchestrator:
 
         # Intent 4: Subject Attendance Check
         if any(k in msg_lower for k in ["attendance", "kitni attendance", "percentage"]):
-            subject_query = "DBMS"
-            for s_name in ["dbms", "database", "os", "operating systems", "cn", "networks", "toc", "theory", "lab"]:
-                if s_name in msg_lower:
-                    subject_query = s_name
-                    break
+            subject_query = await _find_query_subject(msg_lower)
 
             res = await execute_get_subject_attendance(db, user_id, subject_name_or_code=subject_query)
             if "error" in res:

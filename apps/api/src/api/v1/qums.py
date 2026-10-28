@@ -3,6 +3,7 @@ QUMS Integration REST Endpoints
 Handles live captcha retrieval and in-memory credential sync from QUMS.
 """
 
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +32,8 @@ class QUMSSyncResponse(BaseModel):
     success: bool
     message: str
     synced_subjects: list
+    user_id: Optional[int] = None
+    student_name: Optional[str] = None
 
 
 @router.get("/captcha", response_model=QUMSCaptchaResponse)
@@ -57,17 +60,41 @@ async def sync_qums_data(
     """
     Authenticates with QUMS using the student's credentials and captcha,
     extracts their dashboard attendance table, and syncs into CampusPilot.
+    Supports multi-tenancy: auto-discovers or provisions the student account for any QID.
     Credentials are processed strictly in-memory and never stored.
     """
     try:
+        from apps.api.src.models.academic import User
+        from sqlalchemy import select
+
+        # Look up student by QID or user_id
+        clean_qid = payload.qid.strip()
+        user_res = await db.execute(
+            select(User).where(
+                (User.email.like(f"%{clean_qid}%")) | (User.id == payload.user_id)
+            )
+        )
+        target_user = user_res.scalar_one_or_none()
+        if not target_user:
+            # Dynamically provision student account for any college student logging in!
+            target_user = User(
+                full_name=f"Student {clean_qid}",
+                email=f"{clean_qid}@quantumuniversity.edu.in",
+                program="B.Tech Computer Science & Engineering (AI/ML)",
+            )
+            db.add(target_user)
+            await db.flush()
+
         result = await QUMSService.sync_student_data(
             session_token=payload.session_token,
-            qid=payload.qid,
+            qid=clean_qid,
             password=payload.password,
             captcha=payload.captcha,
-            user_id=payload.user_id,
+            user_id=target_user.id,
             db=db,
         )
+        result["user_id"] = target_user.id
+        result["student_name"] = target_user.full_name
         return QUMSSyncResponse(**result)
     except ValueError as ve:
         raise HTTPException(
