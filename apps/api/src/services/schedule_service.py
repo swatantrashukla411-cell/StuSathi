@@ -145,32 +145,37 @@ class ScheduleService:
                 message=msg,
             )
 
-        # Step 2: No more classes today -> check tomorrow
-        tomorrow_date = today_date + timedelta(days=1)
-        tomorrow_dt = datetime.combine(tomorrow_date, datetime.min.time())
-        tomorrow_schedule = await cls.get_today_schedule(
-            db, user_id=user_id, target_date=tomorrow_date, reference_time=tomorrow_dt
-        )
+        # Step 2: No more classes today -> check tomorrow and future days
+        for offset in range(1, 8):
+            future_date = today_date + timedelta(days=offset)
+            future_dt = datetime.combine(future_date, datetime.min.time())
+            future_schedule = await cls.get_today_schedule(
+                db, user_id=user_id, target_date=future_date, reference_time=future_dt
+            )
 
-        if tomorrow_schedule.sessions:
-            first_tomorrow = tomorrow_schedule.sessions[0]
-            msg = (
-                f"No more classes today! Your next class is {first_tomorrow.subject_name} "
-                f"tomorrow ({tomorrow_schedule.day_name}) at {first_tomorrow.start_time} in {first_tomorrow.room}."
-            )
-            return NextClassResponse(
-                has_upcoming=True,
-                subject_name=first_tomorrow.subject_name,
-                subject_code=first_tomorrow.subject_code,
-                start_time=first_tomorrow.start_time,
-                room=first_tomorrow.room,
-                building=first_tomorrow.building,
-                instructor=first_tomorrow.instructor,
-                minutes_remaining=None,
-                message=msg,
-            )
+            if future_schedule.sessions:
+                first_future = future_schedule.sessions[0]
+                day_label = "Tomorrow" if offset == 1 else future_schedule.day_name
+                day_phrase = "tomorrow" if offset == 1 else f"on {future_schedule.day_name}"
+                msg = (
+                    f"No more classes today! Your next class is {first_future.subject_name} "
+                    f"{day_phrase} ({future_schedule.day_name}) at {first_future.start_time} in {first_future.room}."
+                )
+                return NextClassResponse(
+                    has_upcoming=True,
+                    subject_name=first_future.subject_name,
+                    subject_code=first_future.subject_code,
+                    start_time=first_future.start_time,
+                    room=first_future.room,
+                    building=first_future.building,
+                    instructor=first_future.instructor,
+                    minutes_remaining=None,
+                    message=msg,
+                    is_tomorrow=(offset == 1),
+                    day_label=day_label,
+                )
 
         return NextClassResponse(
             has_upcoming=False,
-            message="No upcoming classes scheduled for today or tomorrow. Enjoy your break!",
+            message="No upcoming classes scheduled for this week. Enjoy your break!",
         )

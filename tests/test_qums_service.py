@@ -87,6 +87,40 @@ class TestQUMSHTMLParsing:
         assert s4["classes_attended"] == 16.0
         assert s4["percentage"] == 61.54
 
+    def test_parse_jqgrid_attendance_structure(self):
+        sample_jqgrid_html = """
+        <table id="jqgrdSubject" class="ui-jqgrid-btable">
+            <tbody>
+                <tr class="jqgfirstrow"><td></td></tr>
+                <tr class="jqgrow ui-widget-content">
+                    <td aria-describedby="jqgrdSubject_Subject">Design and Analysis of Algorithm (S)</td>
+                    <td aria-describedby="jqgrdSubject_SubjectCode">CS35303</td>
+                    <td aria-describedby="jqgrdSubject_EMPNAME">VINEET KUMAR SALAR</td>
+                    <td aria-describedby="jqgrdSubject_TotalLecture">32</td>
+                    <td aria-describedby="jqgrdSubject_TotalPresent">26</td>
+                    <td aria-describedby="jqgrdSubject_Percentage">81.25</td>
+                </tr>
+                <tr class="jqgrow ui-widget-content">
+                    <td aria-describedby="jqgrdSubject_Subject">Event Management(L)</td>
+                    <td aria-describedby="jqgrdSubject_SubjectCode">JM3015</td>
+                    <td aria-describedby="jqgrdSubject_EMPNAME">KAVITA VERMA</td>
+                    <td aria-describedby="jqgrdSubject_TotalLecture">23</td>
+                    <td aria-describedby="jqgrdSubject_TotalPresent">20</td>
+                    <td aria-describedby="jqgrdSubject_Percentage">86.96</td>
+                </tr>
+            </tbody>
+        </table>
+        """
+        parsed = QUMSService._parse_attendance_from_html(sample_jqgrid_html)
+        assert len(parsed) == 2
+        assert parsed[0]["subject_code"] == "CS35303"
+        assert parsed[0]["classes_conducted"] == 32.0
+        assert parsed[0]["classes_attended"] == 26.0
+        assert parsed[0]["percentage"] == 81.25
+        assert parsed[0]["instructor"] == "VINEET KUMAR SALAR"
+        assert parsed[1]["subject_code"] == "JM3015"
+        assert parsed[1]["classes_attended"] == 20.0
+
 
 class TestQUMSEndpoints:
     @pytest.fixture

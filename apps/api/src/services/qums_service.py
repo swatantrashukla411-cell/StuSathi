@@ -156,8 +156,68 @@ class QUMSService:
                 err_msg = err_div.get_text(strip=True) if err_div else "Login failed. Please verify your QID and password."
                 raise ValueError(err_msg)
 
-            # Step 2: Extract Attendance Table from Dashboard / Student Portal
-            parsed_subjects = cls._parse_attendance_from_html(response_text)
+            # Step 2: Extract Attendance from QUMS (Direct API via RegID + HTML Fallbacks)
+            parsed_subjects = []
+
+            # 2.1: Direct Live API Call via RegID (Authentic Quantum University Cyborg-ERP flow)
+            try:
+                r_att = await client.get("/Web_StudentAcademic/Cyborg_StudentAttendanceAcademic?id=Attendance")
+                att_html = r_att.text if r_att.status_code == 200 else ""
+                all_html = response_text + "\n" + att_html
+
+                reg_match = re.search(r"var\s+RegID\s*=\s*['\"](\d+)['\"]", all_html)
+                if not reg_match:
+                    reg_match = re.search(r"RegID\s*=\s*['\"]?(\d+)['\"]?", all_html)
+                if not reg_match:
+                    reg_match = re.search(r"FillDates\s*\(\s*['\"]?(\d+)['\"]?\s*\)", all_html)
+                if not reg_match:
+                    reg_match = re.search(r"FillSubjectGrid\s*\(\s*['\"]?(\d+)['\"]?\s*\)", all_html)
+
+                if reg_match:
+                    reg_id = reg_match.group(1)
+                    api_resp = await client.post(
+                        "/Web_StudentAcademic/GetSubjectDetailStudentAcademicFromLive",
+                        data={"RegID": reg_id},
+                        headers={
+                            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                            "X-Requested-With": "XMLHttpRequest",
+                        },
+                    )
+                    if api_resp.status_code == 200:
+                        try:
+                            payload = api_resp.json()
+                            raw_state = payload.get("state")
+                            raw_subs = json.loads(raw_state) if isinstance(raw_state, str) else (raw_state or [])
+                            if isinstance(raw_subs, list) and len(raw_subs) > 0:
+                                for item in raw_subs:
+                                    s_name = str(item.get("Subject", "")).strip()
+                                    s_code = str(item.get("SubjectCode", "")).strip()
+                                    if not s_code:
+                                        code_m = re.search(r"([A-Z]{2,4}\d{3,5}[A-Z]?)", s_name)
+                                        s_code = code_m.group(1) if code_m else f"SUB_{len(parsed_subjects)+1}"
+                                    try:
+                                        cond = float(item.get("TotalLecture", 0) or 0)
+                                        att = float(item.get("TotalPresent", 0) or 0)
+                                        pct = float(item.get("Percentage", 0.0) or 0.0)
+                                    except (ValueError, TypeError):
+                                        cond, att, pct = 0.0, 0.0, 100.0
+
+                                    parsed_subjects.append({
+                                        "subject_code": s_code,
+                                        "subject_name": s_name,
+                                        "classes_conducted": cond,
+                                        "classes_attended": att,
+                                        "percentage": pct,
+                                        "instructor": str(item.get("EMPNAME", item.get("Employee", "")) or "").strip(),
+                                    })
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            # 2.2: Fallback: Parse attendance directly from HTML if API call returned empty
+            if not parsed_subjects:
+                parsed_subjects = cls._parse_attendance_from_html(response_text)
 
             # Verified Quantum University (Cyborg-ERP) routes discovered live
             qums_direct_routes = [
@@ -209,10 +269,10 @@ class QUMSService:
 
             # Step 2.5: Extract student's real name from QUMS portal
             try:
-                name_match = re.search(r"Welcome\s+([A-Z\s]{3,40})", response_text, re.IGNORECASE)
+                name_match = re.search(r"Welcome\s+([A-Z\s]{3,40})", all_html if 'all_html' in locals() else response_text, re.IGNORECASE)
                 if not name_match:
-                    name_soup = BeautifulSoup(response_text, "html.parser")
-                    for h in name_soup.find_all(["h4", "h2"]):
+                    name_soup = BeautifulSoup(all_html if 'all_html' in locals() else response_text, "html.parser")
+                    for h in name_soup.find_all(["h4", "h2", "h1"]):
                         text_val = h.get_text(strip=True)
                         if re.match(r"^[A-Z\s]{4,30}$", text_val) and not any(ign in text_val.lower() for ign in ["quantum", "cyborg", "system", "dashboard", "academic", "notice", "time table", "attendance"]):
                             name_match = text_val
@@ -245,11 +305,61 @@ class QUMSService:
         """
         Parses tables in HTML looking for subject names, conducted classes,
         attended classes, and attendance percentages based on header mapping.
-        Supports both single-column combined codes and separate 'Subject Code' columns.
+        Supports:
+        1. jqGrid DOM structures with aria-describedby selectors.
+        2. Both single-column combined codes and separate 'Subject Code' columns in standard HTML tables.
         """
         soup = BeautifulSoup(html, "html.parser")
-        tables = soup.find_all("table")
         parsed_subjects: List[Dict[str, Any]] = []
+
+        # Strategy A: Check for jqGrid data rows (e.g. td with aria-describedby for Subject, Code, etc.)
+        jq_rows = soup.find_all("tr", class_=re.compile(r"jqgrow|ui-widget-content"))
+        if jq_rows:
+            for r in jq_rows:
+                subj_td = r.find("td", attrs={"aria-describedby": re.compile(r"_Subject$", re.I)})
+                code_td = r.find("td", attrs={"aria-describedby": re.compile(r"_SubjectCode$", re.I)})
+                cond_td = r.find("td", attrs={"aria-describedby": re.compile(r"_TotalLecture$", re.I)})
+                att_td = r.find("td", attrs={"aria-describedby": re.compile(r"_TotalPresent$", re.I)})
+                pct_td = r.find("td", attrs={"aria-describedby": re.compile(r"_Percentage$", re.I)})
+                fac_td = r.find("td", attrs={"aria-describedby": re.compile(r"_EMPNAME|_Employee$", re.I)})
+
+                if subj_td:
+                    name = subj_td.get_text(strip=True)
+                    if not name or any(ign in name.lower() for ign in ["total", "summary", "page", "view"]):
+                        continue
+                    code = code_td.get_text(strip=True) if code_td else ""
+                    if not code:
+                        code_m = re.search(r"([A-Z]{2,4}\d{3,5}[A-Z]?)", name)
+                        code = code_m.group(1) if code_m else f"SUB_{len(parsed_subjects)+1}"
+
+                    try:
+                        cond = float(cond_td.get_text(strip=True).replace("%", "") if cond_td else "0")
+                        att = float(att_td.get_text(strip=True).replace("%", "") if att_td else "0")
+                    except ValueError:
+                        cond, att = 0.0, 0.0
+
+                    if pct_td and pct_td.get_text(strip=True):
+                        try:
+                            pct = float(pct_td.get_text(strip=True).replace("%", ""))
+                        except ValueError:
+                            pct = round((att / cond * 100), 2) if cond > 0 else 100.0
+                    else:
+                        pct = round((att / cond * 100), 2) if cond > 0 else 100.0
+
+                    parsed_subjects.append({
+                        "subject_code": code,
+                        "subject_name": name,
+                        "classes_conducted": cond,
+                        "classes_attended": att,
+                        "percentage": pct,
+                        "instructor": fac_td.get_text(strip=True) if fac_td else None,
+                    })
+
+            if parsed_subjects:
+                return parsed_subjects
+
+        # Strategy B: Standard HTML table header identification
+        tables = soup.find_all("table")
 
         for table in tables:
             rows = table.find_all("tr")
@@ -381,11 +491,17 @@ class QUMSService:
                     semester_id=active_sem.id,
                     code=s["subject_code"],
                     name=s["subject_name"],
+                    instructor_name=s.get("instructor"),
                     credits=4.0,
                     attendance_threshold=75.0,
                     total_planned_sessions=max(40, int(s["classes_conducted"] + 10)),
                 )
                 db.add(subj)
+                await db.flush()
+            else:
+                subj.name = s["subject_name"]
+                if s.get("instructor"):
+                    subj.instructor_name = s.get("instructor")
                 await db.flush()
 
             # Refresh attendance records matching conducted/attended counts

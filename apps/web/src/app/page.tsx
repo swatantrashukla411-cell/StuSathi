@@ -136,7 +136,11 @@ export default function DashboardPage() {
 
         {/* 2-Column Section: Schedule & GPA Orbit */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <TodayTimeline schedule={schedule} loading={loadingSchedule} />
+          <TodayTimeline
+            schedule={schedule}
+            loading={loadingSchedule}
+            userId={student?.user_id || 1}
+          />
           <GPAOrbit data={gpaData} loading={loadingGPA} />
         </div>
 

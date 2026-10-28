@@ -38,8 +38,10 @@ export interface NextClassResponse {
   room?: string;
   building?: string;
   instructor?: string;
-  minutes_remaining?: number;
+  minutes_remaining?: number | null;
   message: string;
+  is_tomorrow?: boolean;
+  day_label?: string;
 }
 
 export interface SubjectAttendance {
@@ -106,9 +108,18 @@ export interface QUMSCaptcha {
   form_token: string;
 }
 
-export async function fetchTodaySchedule(userId: number = 1): Promise<TodayScheduleResponse> {
-  const res = await fetch(`${API_BASE}/timetable/today?user_id=${userId}`, { cache: "no-store" });
+export async function fetchTodaySchedule(userId: number = 1, targetDate?: string): Promise<TodayScheduleResponse> {
+  const url = targetDate
+    ? `${API_BASE}/timetable/today?user_id=${userId}&target_date=${targetDate}`
+    : `${API_BASE}/timetable/today?user_id=${userId}`;
+  const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to load today's schedule");
+  return res.json();
+}
+
+export async function fetchTomorrowSchedule(userId: number = 1): Promise<TodayScheduleResponse> {
+  const res = await fetch(`${API_BASE}/timetable/tomorrow?user_id=${userId}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to load tomorrow's schedule");
   return res.json();
 }
 

@@ -40,6 +40,8 @@ class NextClassResponse(BaseModel):
     instructor: Optional[str] = None
     minutes_remaining: Optional[int] = None
     message: str
+    is_tomorrow: Optional[bool] = False
+    day_label: Optional[str] = None
 
 
 class RecordAttendanceInput(BaseModel):

@@ -126,6 +126,24 @@ class AgentOrchestrator:
                 reply = "Aaj aapki koi aur classes nahi hain! Enjoy your break."
             return reply, "get_next_class", res
 
+        # Intent 1.5: Tomorrow's Schedule / Kal ki classes / Timings
+        if any(k in msg_lower for k in ["kal konsi", "kal ki class", "kal kitne baje", "kal ka schedule", "kal class", "tomorrow"]):
+            from apps.api.src.services.schedule_service import ScheduleService
+            from datetime import date, timedelta
+            tomorrow_date = date.today() + timedelta(days=1)
+            t_res = await ScheduleService.get_today_schedule(db, user_id=user_id, target_date=tomorrow_date)
+            sessions = t_res.sessions
+            if sessions:
+                first = sessions[0]
+                reply = (
+                    f"Kal ({t_res.day_name}) aapki pehli class {first.subject_name} ({first.subject_code}) "
+                    f"subah {first.start_time} baje Room {first.room} mein hai. "
+                    f"Total {len(sessions)} classes scheduled hain."
+                )
+            else:
+                reply = f"Kal ({t_res.day_name}) aapki koi class nahi hai! Araam kijiye."
+            return reply, "get_tomorrow_schedule", t_res.model_dump()
+
         # Helper to dynamically identify subject from student message or active curriculum
         async def _find_query_subject(msg: str) -> str:
             known_tokens = [
