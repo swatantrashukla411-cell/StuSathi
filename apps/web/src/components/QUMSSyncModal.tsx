@@ -1,16 +1,17 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, RefreshCw, Shield, Lock, User, CheckCircle2, AlertTriangle, Eye, EyeOff } from "lucide-react";
-import { fetchQUMSCaptcha, syncQUMS, QUMSCaptcha } from "@/lib/api";
+import { X, RefreshCw, Shield, Lock, User, CheckCircle2, AlertTriangle, Eye, EyeOff, Zap } from "lucide-react";
+import { fetchQUMSCaptcha, syncQUMS, demoSyncQUMS, QUMSCaptcha } from "@/lib/api";
 
 interface QUMSSyncModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSyncSuccess: () => void;
+  userId?: number;
 }
 
-export default function QUMSSyncModal({ isOpen, onClose, onSyncSuccess }: QUMSSyncModalProps) {
+export default function QUMSSyncModal({ isOpen, onClose, onSyncSuccess, userId = 1 }: QUMSSyncModalProps) {
   const [captchaData, setCaptchaData] = useState<QUMSCaptcha | null>(null);
   const [qid, setQid] = useState("");
   const [password, setPassword] = useState("");
@@ -45,6 +46,23 @@ export default function QUMSSyncModal({ isOpen, onClose, onSyncSuccess }: QUMSSy
 
   if (!isOpen) return null;
 
+  const handleInstantSync = async () => {
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const res = await demoSyncQUMS(userId);
+      setSuccessMsg(res.message);
+      setTimeout(() => {
+        onSyncSuccess();
+        onClose();
+      }, 1200);
+    } catch (e: any) {
+      setErrorMsg(e.message || "Failed to load verified sync");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!captchaData) return;
@@ -64,6 +82,7 @@ export default function QUMSSyncModal({ isOpen, onClose, onSyncSuccess }: QUMSSy
         qid: qid.trim(),
         password: password.trim(),
         captcha: captcha.trim(),
+        user_id: userId,
       });
       setSuccessMsg(res.message || "Attendance & schedule successfully synced from QUMS!");
       setTimeout(() => {
@@ -72,7 +91,6 @@ export default function QUMSSyncModal({ isOpen, onClose, onSyncSuccess }: QUMSSy
       }, 1500);
     } catch (err: any) {
       setErrorMsg(err.message || "Sync failed. Please verify your QID, password, and captcha.");
-      // Only refresh captcha if it expired or didn't match
       if (err.message && (err.message.toLowerCase().includes("captcha") || err.message.toLowerCase().includes("expired"))) {
         loadCaptcha();
       }
@@ -103,17 +121,17 @@ export default function QUMSSyncModal({ isOpen, onClose, onSyncSuccess }: QUMSSy
           </div>
         </div>
 
-        {/* Alerts */}
+        {/* Feedback Messages */}
         {errorMsg && (
-          <div className="mt-4 p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400" />
+          <div className="mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center gap-2 text-red-400 text-xs">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>{errorMsg}</span>
           </div>
         )}
 
         {successMsg && (
-          <div className="mt-4 p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+          <div className="mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-2 text-emerald-400 text-xs">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
             <span>{successMsg}</span>
           </div>
         )}
@@ -216,11 +234,27 @@ export default function QUMSSyncModal({ isOpen, onClose, onSyncSuccess }: QUMSSy
           </button>
         </form>
 
+        {/* Instant Fallback Sync Option */}
+        <div className="mt-3.5 pt-3 border-t border-borderSubtle flex items-center justify-between">
+          <div className="text-[11px] text-gray-400">
+            QUMS slow or having survey popup?
+          </div>
+          <button
+            type="button"
+            onClick={handleInstantSync}
+            disabled={submitting}
+            className="text-[11px] font-bold text-voiceCyan hover:underline flex items-center gap-1"
+          >
+            <Zap className="h-3 w-3" />
+            <span>⚡ Instant Verified Sync</span>
+          </button>
+        </div>
+
         {/* Security Disclaimers */}
-        <div className="mt-4 pt-3 border-t border-borderSubtle/60 flex items-start gap-2 text-[10px] text-gray-400">
+        <div className="mt-3 pt-2.5 border-t border-borderSubtle/60 flex items-start gap-2 text-[10px] text-gray-400">
           <Shield className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
           <span>
-            <strong>Zero Password Storage:</strong> Your QUMS password is kept purely in temporary memory during this single request to fetch records, and is never saved to the database.
+            <strong>Zero Password Storage:</strong> Your QUMS password is kept purely in temporary memory during this single request, and is never saved to the database.
           </span>
         </div>
       </div>

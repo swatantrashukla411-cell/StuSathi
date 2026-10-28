@@ -199,6 +199,17 @@ export async function syncQUMS(payload: {
   return res.json();
 }
 
+export async function demoSyncQUMS(userId: number = 1) {
+  const res = await fetch(`${API_BASE}/integrations/qums/demo-sync?user_id=${userId}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "Demo sync failed");
+  }
+  return res.json();
+}
+
 export async function sendChatMessage(message: string, userId: number = 1) {
   const res = await fetch(`${API_BASE}/agent/chat`, {
     method: "POST",
@@ -206,5 +217,62 @@ export async function sendChatMessage(message: string, userId: number = 1) {
     body: JSON.stringify({ message, user_id: userId }),
   });
   if (!res.ok) throw new Error("Failed to send message to agent");
+  return res.json();
+}
+
+export interface StudentProfile {
+  user_id: number;
+  full_name: string;
+  email: string;
+  program: string;
+  active_semester: number;
+  created_at: string;
+}
+
+export async function loginStudent(emailOrQid: string, password?: string): Promise<StudentProfile> {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email_or_qid: emailOrQid, password: password || "student123" }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "Student login failed");
+  }
+  return res.json();
+}
+
+export async function registerStudent(payload: {
+  full_name: string;
+  email_or_qid: string;
+  program?: string;
+  semester_number?: number;
+}): Promise<StudentProfile> {
+  const res = await fetch(`${API_BASE}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      full_name: payload.full_name,
+      email_or_qid: payload.email_or_qid,
+      program: payload.program || "B.Tech Computer Science & Engineering (AI/ML)",
+      semester_number: payload.semester_number || 5,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "Registration failed");
+  }
+  return res.json();
+}
+
+export async function fetchRegisteredStudents(): Promise<{ students: StudentProfile[] }> {
+  const res = await fetch(`${API_BASE}/auth/students`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to load student profiles");
+  return res.json();
+}
+
+export async function fetchCurrentStudent(userId: number): Promise<StudentProfile> {
+  const res = await fetch(`${API_BASE}/auth/me?user_id=${userId}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to load student profile");
   return res.json();
 }

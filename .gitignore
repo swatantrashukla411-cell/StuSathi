@@ -50,6 +50,9 @@ build/
 
 # Logs
 *.log
+cloudflared.exe
+public_url.txt
+tunnel_out.txt
 
 # IDEs & System
 .vscode/

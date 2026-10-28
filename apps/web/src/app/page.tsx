@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Header from "@/components/Header";
 import NextClassHero from "@/components/NextClassHero";
 import TodayTimeline from "@/components/TodayTimeline";
@@ -8,20 +8,24 @@ import AttendanceRadar from "@/components/AttendanceRadar";
 import GPAOrbit from "@/components/GPAOrbit";
 import QUMSSyncModal from "@/components/QUMSSyncModal";
 import VoiceAssistantModal from "@/components/VoiceAssistantModal";
+import StudentAuthModal from "@/components/StudentAuthModal";
 
 import {
   fetchTodaySchedule,
   fetchNextClass,
   fetchAttendanceSummary,
   fetchGPASummary,
+  fetchCurrentStudent,
   TodayScheduleResponse,
   NextClassResponse,
   SubjectAttendance,
   GPASummaryResponse,
+  StudentProfile,
 } from "@/lib/api";
 import { Mic, Sparkles } from "lucide-react";
 
 export default function DashboardPage() {
+  const [student, setStudent] = useState<StudentProfile | null>(null);
   const [schedule, setSchedule] = useState<TodayScheduleResponse | null>(null);
   const [nextClass, setNextClass] = useState<NextClassResponse | null>(null);
   const [subjects, setSubjects] = useState<SubjectAttendance[]>([]);
@@ -34,36 +38,85 @@ export default function DashboardPage() {
 
   const [isQUMSOpen, setIsQUMSOpen] = useState(false);
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
 
-  const loadAllData = async () => {
+  // Initialize active student profile from localStorage or default to student 1 (Swatantra)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("campuspilot_active_student");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setStudent(parsed);
+          return;
+        } catch (e) {}
+      }
+    }
+    // Fallback load default profile
+    fetchCurrentStudent(1)
+      .then((st) => {
+        setStudent(st);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("campuspilot_active_student", JSON.stringify(st));
+        }
+      })
+      .catch(() => {
+        // Fallback default
+        setStudent({
+          user_id: 1,
+          full_name: "Swatantra Shukla",
+          email: "swatantrashukla411@gmail.com",
+          program: "B.Tech Computer Science & Engineering (AI/ML)",
+          active_semester: 5,
+          created_at: new Date().toISOString(),
+        });
+      });
+  }, []);
+
+  const loadAllData = useCallback(async (userId: number) => {
+    setLoadingNext(true);
+    setLoadingSchedule(true);
+    setLoadingAttendance(true);
+    setLoadingGPA(true);
+
     // 1. Next Class
-    fetchNextClass()
+    fetchNextClass(userId)
       .then((data) => setNextClass(data))
       .catch((e) => console.error("Next class load error", e))
       .finally(() => setLoadingNext(false));
 
     // 2. Today's Schedule
-    fetchTodaySchedule()
+    fetchTodaySchedule(userId)
       .then((data) => setSchedule(data))
       .catch((e) => console.error("Schedule load error", e))
       .finally(() => setLoadingSchedule(false));
 
     // 3. Attendance Summary
-    fetchAttendanceSummary()
+    fetchAttendanceSummary(userId)
       .then((data) => setSubjects(data))
       .catch((e) => console.error("Attendance load error", e))
       .finally(() => setLoadingAttendance(false));
 
     // 4. GPA Summary
-    fetchGPASummary()
+    fetchGPASummary(userId)
       .then((data) => setGpaData(data))
       .catch((e) => console.error("GPA load error", e))
       .finally(() => setLoadingGPA(false));
-  };
+  }, []);
 
   useEffect(() => {
-    loadAllData();
-  }, []);
+    if (student?.user_id) {
+      loadAllData(student.user_id);
+    }
+  }, [student?.user_id, loadAllData]);
+
+  const handleStudentChange = (newStudent: StudentProfile) => {
+    setStudent(newStudent);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("campuspilot_active_student", JSON.stringify(newStudent));
+    }
+    loadAllData(newStudent.user_id);
+  };
 
   return (
     <div className="min-h-screen bg-background text-gray-100 flex flex-col pb-20 relative">
@@ -71,7 +124,9 @@ export default function DashboardPage() {
       <Header
         onOpenQUMS={() => setIsQUMSOpen(true)}
         onOpenVoice={() => setIsVoiceOpen(true)}
+        onOpenAuth={() => setIsAuthOpen(true)}
         isVoiceActive={isVoiceOpen}
+        student={student}
       />
 
       {/* Main Container */}
@@ -101,11 +156,20 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {/* Student Account & Authentication Switcher Modal */}
+      <StudentAuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        currentStudent={student}
+        onStudentChange={handleStudentChange}
+      />
+
       {/* QUMS Sync Modal */}
       <QUMSSyncModal
         isOpen={isQUMSOpen}
         onClose={() => setIsQUMSOpen(false)}
-        onSyncSuccess={loadAllData}
+        onSyncSuccess={() => student?.user_id && loadAllData(student.user_id)}
+        userId={student?.user_id || 1}
       />
 
       {/* Voice Assistant Modal */}
