@@ -3,7 +3,10 @@
  * Typed fetch wrappers communicating with the FastAPI backend.
  */
 
-const API_BASE = typeof window !== "undefined" ? "/api/v1" : "http://127.0.0.1:8001/api/v1";
+const API_BASE =
+  typeof window !== "undefined"
+    ? "/api/v1"
+    : `${process.env.NEXT_PUBLIC_API_URL || process.env.BACKEND_API_URL || "http://127.0.0.1:8001"}/api/v1`;
 
 export interface TodaySession {
   session_id: number;

@@ -13,13 +13,20 @@ interface Message {
 interface VoiceAssistantModalProps {
   isOpen: boolean;
   onClose: () => void;
+  userId?: number;
+  studentName?: string;
 }
 
-export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantModalProps) {
+export default function VoiceAssistantModal({
+  isOpen,
+  onClose,
+  userId = 1,
+  studentName,
+}: VoiceAssistantModalProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       sender: "agent",
-      text: "Hey Swatantra! Main aapka CampusPilot AI assistant hoon. Aap mujhse bolkar puchh sakte hain: 'Meri next class kab hai?', 'DBMS me kitne bunk safe hain?', ya '75% attendance ke liye kya karna hoga?'",
+      text: `Hey ${studentName ? studentName.split(" ")[0] : "there"}! Main aapka CampusPilot AI voice assistant hoon. Aap mujhse bolkar puchh sakte hain: 'Meri next class kab hai?', 'DBMS me kitne bunk safe hain?', ya '75% attendance ke liye kya karna hoga?'`,
     },
   ]);
   const [inputText, setInputText] = useState("");
@@ -218,7 +225,7 @@ export default function VoiceAssistantModal({ isOpen, onClose }: VoiceAssistantM
     setIsProcessing(true);
 
     try {
-      const res = await sendChatMessage(text);
+      const res = await sendChatMessage(text, userId);
       setMessages((prev) => [
         ...prev,
         { sender: "agent", text: res.reply, toolInvoked: res.tool_invoked },

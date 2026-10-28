@@ -48,18 +48,18 @@ export default function Header({
         {/* Student Profile Pill / Switcher */}
         <button
           onClick={onOpenAuth}
-          className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-surfaceHover hover:bg-surface border border-borderSubtle hover:border-indigo-500/40 transition-all text-left group"
-          title="Click to Switch Student Profile or Register"
+          className="flex items-center gap-2 sm:gap-2.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-surfaceHover hover:bg-surface border border-borderSubtle hover:border-indigo-500/40 transition-all text-left group"
+          title="Click to Switch Student Profile or Register New Student"
         >
-          <div className="h-7 w-7 rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-xs flex items-center justify-center border border-emerald-500/30">
+          <div className="h-7 w-7 rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-xs flex items-center justify-center border border-emerald-500/30 shrink-0">
             {getInitials(student?.full_name)}
           </div>
-          <div className="hidden sm:block text-left">
+          <div className="text-left">
             <div className="text-xs font-semibold text-gray-100 group-hover:text-voiceCyan transition-colors flex items-center gap-1">
-              <span>{student?.full_name || "Swatantra Shukla"}</span>
-              <span className="text-[10px] text-gray-400 group-hover:text-gray-300">▼</span>
+              <span className="max-w-[100px] sm:max-w-[150px] truncate">{student?.full_name || "Swatantra Shukla"}</span>
+              <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Switch</span>
             </div>
-            <div className="text-[10px] text-gray-400">
+            <div className="text-[10px] text-gray-400 hidden sm:block">
               Sem {student?.active_semester || 5} • {student?.program?.split("(")[0]?.trim() || "B.Tech CSE"}
             </div>
           </div>

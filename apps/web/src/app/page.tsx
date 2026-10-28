@@ -176,6 +176,8 @@ export default function DashboardPage() {
       <VoiceAssistantModal
         isOpen={isVoiceOpen}
         onClose={() => setIsVoiceOpen(false)}
+        userId={student?.user_id || 1}
+        studentName={student?.full_name}
       />
     </div>
   );
