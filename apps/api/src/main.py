@@ -65,11 +65,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register API v1 routes
+# Register API v1 routes at both /api/v1 and /v1 for dual proxy / services compatibility
 app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(api_router, prefix="/v1")
 
 
 @app.get("/health", tags=["Health"])
+@app.get("/api/health", tags=["Health"])
 async def health_check():
     """Health check endpoint to verify backend status."""
     return {

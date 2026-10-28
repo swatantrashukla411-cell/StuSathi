@@ -3,10 +3,20 @@
  * Typed fetch wrappers communicating with the FastAPI backend.
  */
 
-const API_BASE =
-  typeof window !== "undefined"
-    ? "/api/v1"
-    : `${process.env.NEXT_PUBLIC_API_URL || process.env.BACKEND_API_URL || "http://127.0.0.1:8001"}/api/v1`;
+function getApiBase(): string {
+  if (typeof window !== "undefined") {
+    return "/api/v1";
+  }
+  const rawBase =
+    process.env.API_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.BACKEND_API_URL ||
+    "http://127.0.0.1:8001";
+  const trimmed = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
+  return trimmed.endsWith("/api/v1") ? trimmed : `${trimmed}/api/v1`;
+}
+
+const API_BASE = getApiBase();
 
 export interface TodaySession {
   session_id: number;

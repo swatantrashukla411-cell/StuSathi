@@ -1,12 +1,35 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs",
-  "buildCommand": "npm run build --prefix apps/web",
-  "outputDirectory": "apps/web/.next",
+  "services": {
+    "api": {
+      "root": "apps/api",
+      "framework": "fastapi"
+    },
+    "web": {
+      "root": "apps/web",
+      "framework": "nextjs",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "api",
+          "format": "url",
+          "env": "API_URL"
+        }
+      ]
+    }
+  },
   "rewrites": [
     {
-      "source": "/api/v1/:path*",
-      "destination": "/api/index.py"
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "api"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "web"
+      }
     }
   ]
 }
