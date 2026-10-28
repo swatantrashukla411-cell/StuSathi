@@ -1,0 +1,11 @@
+{
+  "name": "stusathi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StuSathi (CampusPilot AI) - Personal Academic Co-Pilot for College Students",
+  "scripts": {
+    "dev": "npm run dev --prefix apps/web",
+    "build": "npm run build --prefix apps/web",
+    "start": "npm run start --prefix apps/web"
+  }
+}

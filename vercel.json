@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "npm run build --prefix apps/web",
+  "outputDirectory": "apps/web/.next",
+  "rewrites": [
+    {
+      "source": "/api/v1/:path*",
+      "destination": "/api/index.py"
+    }
+  ]
+}

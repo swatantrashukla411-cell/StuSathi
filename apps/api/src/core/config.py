@@ -18,11 +18,14 @@ class Settings:
     VERSION: str = "0.1.0"
     
     # Database URL: defaults to async SQLite for effortless local dev & testing.
-    # Set to postgresql+asyncpg://user:pass@localhost:5432/campuspilot in production.
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL", 
-        "sqlite+aiosqlite:///./campuspilot.db"
+    # When deployed to Vercel/Lambda serverless, automatically routes to writable /tmp directory.
+    # In cloud production, set DATABASE_URL to postgresql+asyncpg://... (e.g. Supabase/Neon/Render).
+    _default_db: str = (
+        "sqlite+aiosqlite:////tmp/campuspilot.db"
+        if (os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+        else "sqlite+aiosqlite:///./campuspilot.db"
     )
+    DATABASE_URL: str = os.getenv("DATABASE_URL", _default_db)
     
     # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY", "super-secret-key-change-in-production-123456789")
