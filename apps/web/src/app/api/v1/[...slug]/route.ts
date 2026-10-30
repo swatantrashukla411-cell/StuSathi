@@ -405,78 +405,10 @@ function generateCaptchaSvg(code: string): string {
 
 const activeSessions: Record<string, { code: string; created: number }> = {};
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { slug: string[] } }
-) {
-  const path = params.slug.join("/");
-  const url = new URL(req.url);
-
-  // 1. QUMS Live Captcha
-  if (path === "integrations/qums/captcha") {
-    const sessionToken = "qums_sess_" + Math.random().toString(36).substring(2, 10);
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
-
-      const resHome = await fetch("https://qums.quantumuniversity.edu.in/", {
-        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StuSathi/1.0" },
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (resHome.ok) {
-        const cookies = resHome.headers.get("set-cookie") || "";
-        const html = await resHome.text();
-        const tokenMatch = html.match(/name=["']__RequestVerificationToken["'][^>]*value=["']([^"']+)["']/);
-        const formToken = tokenMatch ? tokenMatch[1] : "token_" + Math.random().toString(36).substring(2);
-
-        const resCaptcha = await fetch("https://qums.quantumuniversity.edu.in/Account/showrefreshcaptchaImage", {
-          method: "POST",
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StuSathi/1.0",
-            "X-Requested-With": "XMLHttpRequest",
-            Cookie: cookies,
-          },
-        });
-
-        if (resCaptcha.ok) {
-          const byteList = await resCaptcha.json();
-          const buffer = Buffer.from(byteList);
-          const b64 = `data:image/png;base64,${buffer.toString("base64")}`;
-          return NextResponse.json({
-            session_token: sessionToken,
-            captcha_image: b64,
-            form_token: formToken,
-          });
-        }
-      }
-    } catch (e) {
-      // Gracefully fall back to dynamic authentic captcha
-    }
-
-    const randomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-    activeSessions[sessionToken] = { code: randomCode, created: Date.now() };
-    const captchaImage = generateCaptchaSvg(randomCode);
-
-    return NextResponse.json({
-      session_token: sessionToken,
-      captcha_image: captchaImage,
-      form_token: "qums_token_" + Math.random().toString(36).substring(2),
-    });
-  }
-
-  // 2. Auth: Current Student (/auth/me?user_id=1)
-  if (path === "auth/me") {
-    const userId = parseInt(url.searchParams.get("user_id") || "1", 10);
-    const student = DEFAULT_STUDENTS.find((s) => s.user_id === userId) || DEFAULT_STUDENTS[0];
-    return NextResponse.json(student);
-  }
-
-  // 3. Auth: Registered Students list (/auth/students)
-  if (path === "auth/students") {
-    return NextResponse.json({ students: DEFAULT_STUDENTS });
-  }
+// Helper to get current Indian Standard Time (IST) for Quantum University (Roorkee, India)
+function getQuantumISTDate(): Date {
+  return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+}
 
 // Helper to parse time string "09:00 AM" to minutes from midnight
 function parseTimeToMinutes(t: string): number {
@@ -827,9 +759,82 @@ const MASTER_WEEKLY_SCHEDULE: Record<number, any[]> = {
   0: [],
 };
 
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { slug: string[] } }
+) {
+  const path = params.slug.join("/");
+  const url = new URL(req.url);
+
+  // 1. QUMS Live Captcha
+  if (path === "integrations/qums/captcha") {
+    const sessionToken = "qums_sess_" + Math.random().toString(36).substring(2, 10);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+      const resHome = await fetch("https://qums.quantumuniversity.edu.in/", {
+        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StuSathi/1.0" },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (resHome.ok) {
+        const cookies = resHome.headers.get("set-cookie") || "";
+        const html = await resHome.text();
+        const tokenMatch = html.match(/name=["']__RequestVerificationToken["'][^>]*value=["']([^"']+)["']/);
+        const formToken = tokenMatch ? tokenMatch[1] : "token_" + Math.random().toString(36).substring(2);
+
+        const resCaptcha = await fetch("https://qums.quantumuniversity.edu.in/Account/showrefreshcaptchaImage", {
+          method: "POST",
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StuSathi/1.0",
+            "X-Requested-With": "XMLHttpRequest",
+            Cookie: cookies,
+          },
+        });
+
+        if (resCaptcha.ok) {
+          const byteList = await resCaptcha.json();
+          const buffer = Buffer.from(byteList);
+          const b64 = `data:image/png;base64,${buffer.toString("base64")}`;
+          return NextResponse.json({
+            session_token: sessionToken,
+            captcha_image: b64,
+            form_token: formToken,
+          });
+        }
+      }
+    } catch (e) {
+      // Gracefully fall back to dynamic authentic captcha
+    }
+
+    const randomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+    activeSessions[sessionToken] = { code: randomCode, created: Date.now() };
+    const captchaImage = generateCaptchaSvg(randomCode);
+
+    return NextResponse.json({
+      session_token: sessionToken,
+      captcha_image: captchaImage,
+      form_token: "qums_token_" + Math.random().toString(36).substring(2),
+    });
+  }
+
+  // 2. Auth: Current Student (/auth/me?user_id=1)
+  if (path === "auth/me") {
+    const userId = parseInt(url.searchParams.get("user_id") || "1", 10);
+    const student = DEFAULT_STUDENTS.find((s) => s.user_id === userId) || DEFAULT_STUDENTS[0];
+    return NextResponse.json(student);
+  }
+
+  // 3. Auth: Registered Students list (/auth/students)
+  if (path === "auth/students") {
+    return NextResponse.json({ students: DEFAULT_STUDENTS });
+  }
+
   // 4. Timetable: Today (/timetable/today)
   if (path === "timetable/today") {
-    const today = new Date();
+    const today = getQuantumISTDate();
     const day = today.getDay(); // 0 is Sunday, 1..6 is Mon..Sat
     const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
     const isSunday = day === 0;
@@ -856,7 +861,7 @@ const MASTER_WEEKLY_SCHEDULE: Record<number, any[]> = {
 
   // 5. Timetable: Tomorrow (/timetable/tomorrow)
   if (path === "timetable/tomorrow") {
-    const tomorrow = new Date();
+    const tomorrow = getQuantumISTDate();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const day = tomorrow.getDay();
     const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -876,7 +881,7 @@ const MASTER_WEEKLY_SCHEDULE: Record<number, any[]> = {
 
   // 6. Timetable: Next Class (/timetable/next)
   if (path === "timetable/next") {
-    const now = new Date();
+    const now = getQuantumISTDate();
     const currentDay = now.getDay(); // 0 is Sunday, 1..6 is Mon..Sat
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
@@ -1316,7 +1321,7 @@ export async function POST(
       message.includes("saturday") ||
       message.includes("monday")
     ) {
-      const now = new Date();
+      const now = getQuantumISTDate();
       const currentDay = now.getDay();
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
