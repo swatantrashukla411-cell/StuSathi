@@ -478,74 +478,379 @@ export async function GET(
     return NextResponse.json({ students: DEFAULT_STUDENTS });
   }
 
+// Helper to parse time string "09:00 AM" to minutes from midnight
+function parseTimeToMinutes(t: string): number {
+  if (!t) return 0;
+  const parts = t.trim().split(" ");
+  if (parts.length < 2) return 0;
+  const [timePart, modifier] = parts;
+  let [hours, minutes] = timePart.split(":").map(Number);
+  if (modifier === "PM" && hours !== 12) hours += 12;
+  if (modifier === "AM" && hours === 12) hours = 0;
+  return hours * 60 + (minutes || 0);
+}
+
+// Master Weekly Timetable for Quantum University B.Tech CSE (AI/ML) Semester 5
+// Working Days: Monday to Saturday (6-Day Academic Week). Sunday is weekly holiday.
+const MASTER_WEEKLY_SCHEDULE: Record<number, any[]> = {
+  // 1: Monday
+  1: [
+    {
+      session_id: 101,
+      subject_id: 1,
+      subject_code: "CS35303",
+      subject_name: "Design and Analysis of Algorithm (S)",
+      start_time: "09:00 AM",
+      end_time: "10:00 AM",
+      session_type: "lecture",
+      room: "Room 304",
+      building: "Block B",
+      instructor: "Dr. R. K. Sharma",
+      status: "upcoming",
+    },
+    {
+      session_id: 102,
+      subject_id: 8,
+      subject_code: "CS35304",
+      subject_name: "Foundation of Cloud Computing(S)",
+      start_time: "10:15 AM",
+      end_time: "11:15 AM",
+      session_type: "lecture",
+      room: "Room 201",
+      building: "Block A",
+      instructor: "AMIT KUMAR",
+      status: "upcoming",
+    },
+    {
+      session_id: 103,
+      subject_id: 3,
+      subject_code: "CS35363",
+      subject_name: "Design and Analysis of Algorithm Lab(L)",
+      start_time: "11:30 AM",
+      end_time: "01:00 PM",
+      session_type: "lab",
+      room: "Lab 304",
+      building: "Block B",
+      instructor: "Dr. R. K. Sharma",
+      status: "upcoming",
+    },
+    {
+      session_id: 104,
+      subject_id: 6,
+      subject_code: "SE35369",
+      subject_name: "Technical Skills Development-IV(L)",
+      start_time: "02:00 PM",
+      end_time: "03:00 PM",
+      session_type: "lecture",
+      room: "Room 105",
+      building: "Block B",
+      instructor: "VIVEK KUMAR",
+      status: "upcoming",
+    },
+  ],
+  // 2: Tuesday
+  2: [
+    {
+      session_id: 201,
+      subject_id: 7,
+      subject_code: "CS35365",
+      subject_name: "Scala for Data Science - Tools and Techniques(L)",
+      start_time: "09:00 AM",
+      end_time: "10:00 AM",
+      session_type: "lecture",
+      room: "Room 302",
+      building: "Block B",
+      instructor: "BHANU PARTAP",
+      status: "upcoming",
+    },
+    {
+      session_id: 202,
+      subject_id: 1,
+      subject_code: "CS35303",
+      subject_name: "Design and Analysis of Algorithm (S)",
+      start_time: "10:15 AM",
+      end_time: "11:15 AM",
+      session_type: "lecture",
+      room: "Room 304",
+      building: "Block B",
+      instructor: "Dr. R. K. Sharma",
+      status: "upcoming",
+    },
+    {
+      session_id: 203,
+      subject_id: 9,
+      subject_code: "CS35364",
+      subject_name: "Advance Machine Learning Practical with Python(L)",
+      start_time: "11:30 AM",
+      end_time: "12:30 PM",
+      session_type: "lab",
+      room: "AI Lab 1",
+      building: "Block B",
+      instructor: "Dr. K. S. Verma",
+      status: "upcoming",
+    },
+    {
+      session_id: 204,
+      subject_id: 10,
+      subject_code: "JM3015",
+      subject_name: "Event Management(L)",
+      start_time: "02:00 PM",
+      end_time: "03:00 PM",
+      session_type: "lecture",
+      room: "Room 205",
+      building: "Block A",
+      instructor: "Prof. Anjali Roy",
+      status: "upcoming",
+    },
+  ],
+  // 3: Wednesday
+  3: [
+    {
+      session_id: 301,
+      subject_id: 4,
+      subject_code: "AE35362",
+      subject_name: "Corporate Communication(L)",
+      start_time: "09:00 AM",
+      end_time: "10:00 AM",
+      session_type: "lecture",
+      room: "Room 108",
+      building: "Block A",
+      instructor: "Dr. N. Sengupta",
+      status: "upcoming",
+    },
+    {
+      session_id: 302,
+      subject_id: 8,
+      subject_code: "CS35304",
+      subject_name: "Foundation of Cloud Computing(S)",
+      start_time: "10:15 AM",
+      end_time: "11:15 AM",
+      session_type: "lecture",
+      room: "Room 201",
+      building: "Block A",
+      instructor: "AMIT KUMAR",
+      status: "upcoming",
+    },
+    {
+      session_id: 303,
+      subject_id: 2,
+      subject_code: "CS35378",
+      subject_name: "Mini Project - III(L)",
+      start_time: "11:30 AM",
+      end_time: "01:00 PM",
+      session_type: "lab",
+      room: "Project Lab",
+      building: "Block B",
+      instructor: "Prof. Saurabh Singh",
+      status: "upcoming",
+    },
+    {
+      session_id: 304,
+      subject_id: 6,
+      subject_code: "SE35369",
+      subject_name: "Technical Skills Development-IV(L)",
+      start_time: "02:00 PM",
+      end_time: "03:00 PM",
+      session_type: "lecture",
+      room: "Room 105",
+      building: "Block B",
+      instructor: "VIVEK KUMAR",
+      status: "upcoming",
+    },
+  ],
+  // 4: Thursday
+  4: [
+    {
+      session_id: 401,
+      subject_id: 7,
+      subject_code: "CS35365",
+      subject_name: "Scala for Data Science(L)",
+      start_time: "09:00 AM",
+      end_time: "10:00 AM",
+      session_type: "lecture",
+      room: "Room 302",
+      building: "Block B",
+      instructor: "BHANU PARTAP",
+      status: "upcoming",
+    },
+    {
+      session_id: 402,
+      subject_id: 9,
+      subject_code: "CS35364",
+      subject_name: "Advance Machine Learning Practical(L)",
+      start_time: "10:15 AM",
+      end_time: "11:15 AM",
+      session_type: "lab",
+      room: "AI Lab 1",
+      building: "Block B",
+      instructor: "Dr. K. S. Verma",
+      status: "upcoming",
+    },
+    {
+      session_id: 403,
+      subject_id: 1,
+      subject_code: "CS35303",
+      subject_name: "Design and Analysis of Algorithm (S)",
+      start_time: "11:30 AM",
+      end_time: "12:30 PM",
+      session_type: "lecture",
+      room: "Room 304",
+      building: "Block B",
+      instructor: "Dr. R. K. Sharma",
+      status: "upcoming",
+    },
+    {
+      session_id: 404,
+      subject_id: 5,
+      subject_code: "SI35375",
+      subject_name: "Summer Internship II Evaluation(L)",
+      start_time: "02:00 PM",
+      end_time: "03:00 PM",
+      session_type: "presentation",
+      room: "Seminar Hall",
+      building: "Block B",
+      instructor: "Mentor Committee",
+      status: "upcoming",
+    },
+  ],
+  // 5: Friday
+  5: [
+    {
+      session_id: 501,
+      subject_id: 8,
+      subject_code: "CS35304",
+      subject_name: "Foundation of Cloud Computing(S)",
+      start_time: "09:00 AM",
+      end_time: "10:00 AM",
+      session_type: "lecture",
+      room: "Room 201",
+      building: "Block A",
+      instructor: "AMIT KUMAR",
+      status: "upcoming",
+    },
+    {
+      session_id: 502,
+      subject_id: 4,
+      subject_code: "AE35362",
+      subject_name: "Corporate Communication(L)",
+      start_time: "10:15 AM",
+      end_time: "11:15 AM",
+      session_type: "lecture",
+      room: "Room 108",
+      building: "Block A",
+      instructor: "Dr. N. Sengupta",
+      status: "upcoming",
+    },
+    {
+      session_id: 503,
+      subject_id: 3,
+      subject_code: "CS35363",
+      subject_name: "Design and Analysis of Algorithm Lab(L)",
+      start_time: "11:30 AM",
+      end_time: "01:00 PM",
+      session_type: "lab",
+      room: "Lab 304",
+      building: "Block B",
+      instructor: "Dr. R. K. Sharma",
+      status: "upcoming",
+    },
+    {
+      session_id: 504,
+      subject_id: 10,
+      subject_code: "JM3015",
+      subject_name: "Event Management(L)",
+      start_time: "02:00 PM",
+      end_time: "03:00 PM",
+      session_type: "lecture",
+      room: "Room 205",
+      building: "Block A",
+      instructor: "Prof. Anjali Roy",
+      status: "upcoming",
+    },
+  ],
+  // 6: Saturday (Quantum University Timetable)
+  6: [
+    {
+      session_id: 601,
+      subject_id: 3,
+      subject_code: "CS35363",
+      subject_name: "Design and Analysis of Algorithm Lab(L)",
+      start_time: "10:50 AM",
+      end_time: "11:45 AM",
+      session_type: "lab",
+      room: "Lab E-202",
+      building: "Block E",
+      instructor: "Dr. R. K. Sharma",
+      status: "upcoming",
+    },
+    {
+      session_id: 602,
+      subject_id: 5,
+      subject_code: "SI35375",
+      subject_name: "Summer Internship II(L)",
+      start_time: "11:45 AM",
+      end_time: "12:40 PM",
+      session_type: "lecture",
+      room: "Room A-009",
+      building: "Block A",
+      instructor: "Mentor Committee",
+      status: "upcoming",
+    },
+    {
+      session_id: 603,
+      subject_id: 10,
+      subject_code: "JM3015",
+      subject_name: "Event Management(L)",
+      start_time: "01:35 PM",
+      end_time: "02:30 PM",
+      session_type: "lecture",
+      room: "Room F-204",
+      building: "Block F",
+      instructor: "Prof. Anjali Roy",
+      status: "upcoming",
+    },
+    {
+      session_id: 604,
+      subject_id: 10,
+      subject_code: "JM3015",
+      subject_name: "Event Management(L)",
+      start_time: "02:30 PM",
+      end_time: "03:25 PM",
+      session_type: "lecture",
+      room: "Room F-204",
+      building: "Block F",
+      instructor: "Prof. Anjali Roy",
+      status: "upcoming",
+    },
+  ],
+  // 0: Sunday (Weekly Holiday)
+  0: [],
+};
+
   // 4. Timetable: Today (/timetable/today)
   if (path === "timetable/today") {
     const today = new Date();
-    const day = today.getDay(); // 0 is Sunday, 1 is Monday ... 6 is Saturday
+    const day = today.getDay(); // 0 is Sunday, 1..6 is Mon..Sat
     const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const isWeekend = day === 0 || day === 6;
+    const isSunday = day === 0;
+    const currentMinutes = today.getHours() * 60 + today.getMinutes();
 
-    const weekdaySessions = [
-      {
-        session_id: 1,
-        subject_id: 1,
-        subject_code: "CS35303",
-        subject_name: "Design and Analysis of Algorithm (S)",
-        start_time: "09:00 AM",
-        end_time: "10:00 AM",
-        session_type: "lecture",
-        room: "Room 304",
-        building: "Block B",
-        instructor: "Dr. R. K. Sharma",
-        status: "completed" as const,
-      },
-      {
-        session_id: 2,
-        subject_id: 8,
-        subject_code: "CS35304",
-        subject_name: "Foundation of Cloud Computing(S)",
-        start_time: "10:15 AM",
-        end_time: "11:15 AM",
-        session_type: "lecture",
-        room: "Room 201",
-        building: "Block A",
-        instructor: "AMIT KUMAR",
-        status: "completed" as const,
-      },
-      {
-        session_id: 3,
-        subject_id: 3,
-        subject_code: "CS35363",
-        subject_name: "Design and Analysis of Algorithm Lab(L)",
-        start_time: "11:30 AM",
-        end_time: "01:00 PM",
-        session_type: "lab",
-        room: "Lab 304",
-        building: "Block B",
-        instructor: "Dr. R. K. Sharma",
-        status: "upcoming" as const,
-      },
-      {
-        session_id: 4,
-        subject_id: 6,
-        subject_code: "SE35369",
-        subject_name: "Technical Skills Development-IV(L)",
-        start_time: "02:00 PM",
-        end_time: "03:00 PM",
-        session_type: "lecture",
-        room: "Room 105",
-        building: "Block B",
-        instructor: "VIVEK KUMAR",
-        status: "upcoming" as const,
-      },
-    ];
+    const rawSessions = MASTER_WEEKLY_SCHEDULE[day] || [];
+    const sessions = rawSessions.map((s) => {
+      const startMin = parseTimeToMinutes(s.start_time);
+      const endMin = parseTimeToMinutes(s.end_time);
+      let status: "completed" | "ongoing" | "upcoming" = "upcoming";
+      if (currentMinutes > endMin) status = "completed";
+      else if (currentMinutes >= startMin && currentMinutes <= endMin) status = "ongoing";
+      return { ...s, status };
+    });
 
     return NextResponse.json({
       date: today.toISOString().split("T")[0],
       day_name: dayNames[day],
       day_of_week: day,
-      total_classes: isWeekend ? 0 : weekdaySessions.length,
-      sessions: isWeekend ? [] : weekdaySessions,
+      total_classes: isSunday ? 0 : sessions.length,
+      sessions: isSunday ? [] : sessions,
     });
   }
 
@@ -555,129 +860,110 @@ export async function GET(
     tomorrow.setDate(tomorrow.getDate() + 1);
     const day = tomorrow.getDay();
     const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const isWeekend = day === 0 || day === 6;
+    const isSunday = day === 0;
 
-    const tomorrowSessions = [
-      {
-        session_id: 5,
-        subject_id: 7,
-        subject_code: "CS35365",
-        subject_name: "Scala for Data Science - Tools and Techniques(L)",
-        start_time: "09:00 AM",
-        end_time: "10:00 AM",
-        session_type: "lecture",
-        room: "Room 302",
-        building: "Block B",
-        instructor: "BHANU PARTAP",
-        status: "upcoming" as const,
-      },
-      {
-        session_id: 6,
-        subject_id: 9,
-        subject_code: "CS35364",
-        subject_name: "Advance Machine Learning Practical with Python(L)",
-        start_time: "10:15 AM",
-        end_time: "11:15 AM",
-        session_type: "lab",
-        room: "AI Lab 1",
-        building: "Block B",
-        instructor: "Dr. K. S. Verma",
-        status: "upcoming" as const,
-      },
-      {
-        session_id: 7,
-        subject_id: 10,
-        subject_code: "JM3015",
-        subject_name: "Event Management(L)",
-        start_time: "02:00 PM",
-        end_time: "03:00 PM",
-        session_type: "lecture",
-        room: "Room 205",
-        building: "Block A",
-        instructor: "Prof. Anjali Roy",
-        status: "upcoming" as const,
-      },
-    ];
+    const rawSessions = MASTER_WEEKLY_SCHEDULE[day] || [];
+    const sessions = rawSessions.map((s) => ({ ...s, status: "upcoming" as const }));
 
     return NextResponse.json({
       date: tomorrow.toISOString().split("T")[0],
       day_name: dayNames[day],
       day_of_week: day,
-      total_classes: isWeekend ? 0 : tomorrowSessions.length,
-      sessions: isWeekend ? [] : tomorrowSessions,
+      total_classes: isSunday ? 0 : sessions.length,
+      sessions: isSunday ? [] : sessions,
     });
   }
 
   // 6. Timetable: Next Class (/timetable/next)
   if (path === "timetable/next") {
     const now = new Date();
-    const currentHour = now.getHours();
-    const currentDay = now.getDay(); // 0 is Sunday, 6 is Saturday
-    const isWeekend = currentDay === 0 || currentDay === 6;
-    const isNighttime = currentHour >= 17 || currentHour < 7;
+    const currentDay = now.getDay(); // 0 is Sunday, 1..6 is Mon..Sat
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    if (isWeekend) {
+    // 1. If Sunday: College is off, next class is Monday morning at 09:00 AM
+    if (currentDay === 0) {
+      const monFirst = MASTER_WEEKLY_SCHEDULE[1][0];
       return NextResponse.json({
         has_upcoming: true,
-        subject_name: "Design and Analysis of Algorithm (S)",
-        subject_code: "CS35303",
-        start_time: "09:00 AM",
-        room: "Room 304",
-        building: "Block B",
-        instructor: "Dr. R. K. Sharma",
+        subject_name: monFirst.subject_name,
+        subject_code: monFirst.subject_code,
+        start_time: monFirst.start_time,
+        room: monFirst.room,
+        building: monFirst.building,
+        instructor: monFirst.instructor,
         minutes_remaining: null,
-        message: "Weekend (Saturday/Sunday) - College is off! Your next class is Monday morning at 09:00 AM: Design and Analysis of Algorithm in Room 304, Block B.",
+        message: "Sunday (Weekly Off) - College is closed. Your next class is Monday at 09:00 AM: Design and Analysis of Algorithm in Room 304, Block B.",
+        is_tomorrow: true,
+        day_label: "Monday",
+      });
+    }
+
+    // 2. Monday through Saturday: Check if any session is ongoing or upcoming TODAY
+    const todaySessions = MASTER_WEEKLY_SCHEDULE[currentDay] || [];
+    const upcomingToday = todaySessions.find((s) => parseTimeToMinutes(s.end_time) > currentMinutes);
+
+    if (upcomingToday) {
+      const startMin = parseTimeToMinutes(upcomingToday.start_time);
+      const isOngoing = currentMinutes >= startMin;
+      const minutesRemaining = isOngoing ? null : Math.max(0, startMin - currentMinutes);
+
+      const dayTitle = currentDay === 6 ? "Today (Saturday)" : "Today";
+      const msg = isOngoing
+        ? `Class is currently in session: ${upcomingToday.subject_name} in ${upcomingToday.room}, ${upcomingToday.building} until ${upcomingToday.end_time}.`
+        : `Next class ${dayTitle} at ${upcomingToday.start_time}: ${upcomingToday.subject_name} in ${upcomingToday.room}, ${upcomingToday.building} with ${upcomingToday.instructor}.`;
+
+      return NextResponse.json({
+        has_upcoming: true,
+        subject_name: upcomingToday.subject_name,
+        subject_code: upcomingToday.subject_code,
+        start_time: upcomingToday.start_time,
+        room: upcomingToday.room,
+        building: upcomingToday.building,
+        instructor: upcomingToday.instructor,
+        minutes_remaining: minutesRemaining,
+        message: msg,
+        is_tomorrow: false,
+        day_label: dayTitle,
+      });
+    }
+
+    // 3. Today's sessions are concluded
+    if (currentDay === 6) {
+      // Saturday night: Tomorrow is Sunday (off), next class is Monday morning!
+      const monFirst = MASTER_WEEKLY_SCHEDULE[1][0];
+      return NextResponse.json({
+        has_upcoming: true,
+        subject_name: monFirst.subject_name,
+        subject_code: monFirst.subject_code,
+        start_time: monFirst.start_time,
+        room: monFirst.room,
+        building: monFirst.building,
+        instructor: monFirst.instructor,
+        minutes_remaining: null,
+        message: "Saturday classes have concluded! Tomorrow is Sunday (Holiday). Your next class is Monday morning at 09:00 AM: Design and Analysis of Algorithm in Room 304, Block B.",
         is_tomorrow: false,
         day_label: "Monday",
       });
     }
 
-    if (isNighttime) {
-      if (currentDay === 5) {
-        // Friday night -> Next class is Monday morning!
-        return NextResponse.json({
-          has_upcoming: true,
-          subject_name: "Design and Analysis of Algorithm (S)",
-          subject_code: "CS35303",
-          start_time: "09:00 AM",
-          room: "Room 304",
-          building: "Block B",
-          instructor: "Dr. R. K. Sharma",
-          minutes_remaining: null,
-          message: "Friday lectures over! Enjoy your weekend. Next class is Monday at 09:00 AM: Design and Analysis of Algorithm in Room 304, Block B.",
-          is_tomorrow: false,
-          day_label: "Monday",
-        });
-      }
+    // Monday to Friday after classes: Next class is tomorrow morning!
+    const tomorrowDay = currentDay + 1;
+    const tomorrowFirst = (MASTER_WEEKLY_SCHEDULE[tomorrowDay] || [])[0];
+    const isTomorrowSat = tomorrowDay === 6;
+    const tomLabel = isTomorrowSat ? "Tomorrow (Saturday)" : "Tomorrow";
 
-      return NextResponse.json({
-        has_upcoming: true,
-        subject_name: "Scala for Data Science - Tools and Techniques(L)",
-        subject_code: "CS35365",
-        start_time: "09:00 AM",
-        room: "Room 302",
-        building: "Block B",
-        instructor: "BHANU PARTAP",
-        minutes_remaining: 540,
-        message: "Classes for today have concluded. Your next class is tomorrow morning at 09:00 AM: Scala for Data Science in Room 302, Block B.",
-        is_tomorrow: true,
-        day_label: "Tomorrow",
-      });
-    }
-
-    // Weekday daytime
     return NextResponse.json({
       has_upcoming: true,
-      subject_name: "Design and Analysis of Algorithm Lab(L)",
-      subject_code: "CS35363",
-      start_time: "11:30 AM",
-      room: "Lab 304",
-      building: "Block B",
-      instructor: "Dr. R. K. Sharma",
-      minutes_remaining: 45,
-      message: "Next class at 11:30 AM: Design and Analysis of Algorithm Lab in Lab 304, Block B.",
-      is_tomorrow: false,
-      day_label: "Today",
+      subject_name: tomorrowFirst.subject_name,
+      subject_code: tomorrowFirst.subject_code,
+      start_time: tomorrowFirst.start_time,
+      room: tomorrowFirst.room,
+      building: tomorrowFirst.building,
+      instructor: tomorrowFirst.instructor,
+      minutes_remaining: null,
+      message: `Today's classes have concluded. Your next class is ${tomLabel} at ${tomorrowFirst.start_time}: ${tomorrowFirst.subject_name} in ${tomorrowFirst.room}, ${tomorrowFirst.building}.`,
+      is_tomorrow: true,
+      day_label: tomLabel,
     });
   }
 
@@ -1027,13 +1313,25 @@ export async function POST(
       message.includes("tomorrow") ||
       message.includes("timing") ||
       message.includes("schedule") ||
+      message.includes("saturday") ||
       message.includes("monday")
     ) {
-      const currentDay = new Date().getDay();
-      if (currentDay === 0 || currentDay === 6 || currentDay === 5) {
-        reply = "Classes for this week have concluded! Your next class is Monday morning at 09:00 AM: Design and Analysis of Algorithm (S) in Room 304, Block B with Dr. R. K. Sharma.";
+      const now = new Date();
+      const currentDay = now.getDay();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+      if (currentDay === 0) {
+        reply = "Aaj Sunday hai (College Off)! Aapki agli class Monday subah 09:00 AM pe hai: Design and Analysis of Algorithm (S) in Room 304, Block B with Dr. R. K. Sharma.";
+      } else if (currentDay === 6) {
+        if (currentMinutes > 15 * 60 + 25) {
+          reply = "Saturday ki sabhi classes complete ho chuki hain! Kal Sunday holiday hai. Agli class Monday subah 09:00 AM pe hogi: Design and Analysis of Algorithm (S).";
+        } else {
+          reply = "Saturday ko classes hoti hain! Schedule: 10:50 AM pe Design and Analysis of Algorithm Lab (Lab E-202), 11:45 AM pe Summer Internship II (Room A-009), aur 01:35 PM & 02:30 PM pe Event Management (Room F-204).";
+        }
+      } else if (currentDay === 5 && now.getHours() >= 17) {
+        reply = "Friday lectures over! Kal Saturday ko 10:50 AM pe aapki class hai: Design and Analysis of Algorithm Lab in Lab E-202, Block E.";
       } else {
-        reply = "Your next upcoming session is Design and Analysis of Algorithm Lab at 11:30 AM in Lab 304, Block B.";
+        reply = "Aapka schedule updated hai. Monday se Saturday tak ki sabhi classes active hain!";
       }
     } else if (message.includes("bunk") || message.includes("leave") || message.includes("miss")) {
       const safeSub = subjects.find((s) => s.safe_future_absences > 0);
