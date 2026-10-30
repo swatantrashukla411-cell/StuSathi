@@ -61,7 +61,6 @@ export default function DashboardPage() {
         }
       })
       .catch(() => {
-        // Fallback default
         setStudent({
           user_id: 1,
           full_name: "Swatantra Shukla",
@@ -91,9 +90,23 @@ export default function DashboardPage() {
       .catch((e) => console.error("Schedule load error", e))
       .finally(() => setLoadingSchedule(false));
 
-    // 3. Attendance Summary
+    // 3. Attendance Summary with LocalStorage Cache
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem(`campuspilot_subjects_${userId}`);
+      if (cached) {
+        try {
+          setSubjects(JSON.parse(cached));
+        } catch (e) {}
+      }
+    }
+
     fetchAttendanceSummary(userId)
-      .then((data) => setSubjects(data))
+      .then((data) => {
+        setSubjects(data);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(`campuspilot_subjects_${userId}`, JSON.stringify(data));
+        }
+      })
       .catch((e) => console.error("Attendance load error", e))
       .finally(() => setLoadingAttendance(false));
 
@@ -173,6 +186,12 @@ export default function DashboardPage() {
         isOpen={isQUMSOpen}
         onClose={() => setIsQUMSOpen(false)}
         onSyncSuccess={async (syncData?: any) => {
+          if (syncData?.synced_subjects && syncData?.synced_subjects.length > 0) {
+            setSubjects(syncData.synced_subjects);
+            if (typeof window !== "undefined" && syncData?.user_id) {
+              localStorage.setItem(`campuspilot_subjects_${syncData.user_id}`, JSON.stringify(syncData.synced_subjects));
+            }
+          }
           if (syncData?.user_id) {
             try {
               const updatedProfile = await fetchCurrentStudent(syncData.user_id);
